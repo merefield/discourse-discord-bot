@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 # name: discourse-discord-bot
 # about: Integrate Discord Bots with Discourse
-# version: 0.3.30
+# version: 0.3.31
 # authors: Robert Barrow
 # url: https://github.com/merefield/discourse-discord-bot
 
@@ -17,7 +17,7 @@ gem 'opus-ruby', '1.0.1', { require: false }
 gem 'netrc', '0.11.0'
 gem 'mime-types-data', '3.2025.0624', require: false
 gem 'mime-types', '3.7.0', { require: false }
-gem 'domain_name', '0.5.20180417'
+gem 'domain_name', '0.6.20240107'
 gem 'http-cookie', '1.0.3'
 gem 'http-accept', '1.7.0', { require: false }
 gem 'rest-client', '2.1.0.rc1'
