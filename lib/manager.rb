@@ -3,6 +3,8 @@
 module ::DiscordBot
   # Owns the active Discord bot and thread for each multisite database.
   class Manager
+    STOP_TIMEOUT = 5
+
     Runtime = Struct.new(:bot, :thread, keyword_init: true)
 
     class << self
@@ -86,7 +88,11 @@ module ::DiscordBot
         rescue StandardError => e
           Rails.logger.error("Discord Bot: There was a problem stopping the bot: #{e}")
         ensure
-          runtime.thread.join
+          unless runtime.thread.join(STOP_TIMEOUT)
+            Rails.logger.warn("Discord Bot: Timed out stopping the bot; terminating its thread")
+            runtime.thread.kill
+            runtime.thread.join
+          end
         end
       end
     end

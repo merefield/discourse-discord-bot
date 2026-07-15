@@ -75,4 +75,25 @@ describe DiscordBot::Manager do
 
     expect(described_class.bot_for(db)).to be_nil
   end
+
+  it "terminates a worker that does not stop" do
+    worker_started = Queue.new
+    keep_running = Queue.new
+    stuck_bot = Object.new
+    stuck_bot.define_singleton_method(:run) do
+      worker_started << Thread.current
+      keep_running.pop
+    end
+    stuck_bot.define_singleton_method(:stop) { raise "stop failed" }
+    DiscordBot::Bot.stubs(:init).returns(stuck_bot)
+
+    described_class.restart(db)
+    worker_thread = Timeout.timeout(1) { worker_started.pop }
+    SiteSetting.discord_bot_enabled = false
+    stub_const(described_class, :STOP_TIMEOUT, 0.01) do
+      Timeout.timeout(1) { described_class.restart(db) }
+    end
+
+    expect(worker_thread).not_to be_alive
+  end
 end
