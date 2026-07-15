@@ -8,7 +8,7 @@
 
 libdir = File.join(File.dirname(__FILE__), "vendor/discordrb/lib")
 
-$LOAD_PATH.unshift(libdir) unless $LOAD_PATH.include?(libdir)
+$LOAD_PATH.unshift(libdir) if $LOAD_PATH.exclude?(libdir)
 
 gem "event_emitter", "0.2.6"
 gem "websocket", "1.2.11"

@@ -1,1 +1,4 @@
-gems
+node_modules
+/gems
+/auto_generated
+.eslintcache
