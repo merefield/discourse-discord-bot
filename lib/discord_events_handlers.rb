@@ -4,7 +4,9 @@ module ::DiscordBot::DiscordEventsHandlers
   module TransmitAnnouncement
     extend Discordrb::EventContainer
 
-    message { |event| handle_message(event) }
+    message do |event|
+      ::DiscordBot::DiscordEventsHandlers::TransmitAnnouncement.handle_message(event)
+    end
 
     def self.handle_message(event)
       RailsMultisite::ConnectionManagement.each_connection do
