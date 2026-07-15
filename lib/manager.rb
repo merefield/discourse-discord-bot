@@ -55,16 +55,27 @@ module ::DiscordBot
 
       def start_runtime(db)
         bot = ::DiscordBot::Bot.init
-        thread = Thread.new { run_bot(db, bot) }
+        runtime = Runtime.new(bot: bot)
+        registered = Queue.new
+        thread =
+          Thread.new do
+            registered.pop
+            run_bot(db, runtime)
+          end
+        runtime.thread = thread
 
-        registry_mutex.synchronize { runtimes[db] = Runtime.new(bot: bot, thread: thread) }
+        registry_mutex.synchronize { runtimes[db] = runtime }
+        registered << true
+        runtime
       end
 
-      def run_bot(db, bot)
+      def run_bot(db, runtime)
         RailsMultisite::ConnectionManagement.establish_connection(db: db)
-        bot.run
+        runtime.bot.run
       rescue StandardError => e
         Rails.logger.error("Discord Bot: There was a problem: #{e}")
+      ensure
+        registry_mutex.synchronize { runtimes.delete(db) if runtimes[db].equal?(runtime) }
       end
 
       def stop_runtime(runtime)

@@ -2,7 +2,16 @@
 
 describe DiscordBot::Manager do
   let(:db) { RailsMultisite::ConnectionManagement.current_db }
-  let(:bots) { Array.new(2) { mock("bot").tap { |bot| bot.stubs(run: nil, stop: nil) } } }
+
+  let(:bots) do
+    Array.new(2) do
+      stopped = Queue.new
+      mock("bot").tap do |bot|
+        bot.stubs(:run) { stopped.pop }
+        bot.stubs(:stop) { stopped << true }
+      end
+    end
+  end
 
   before do
     SiteSetting.discord_bot_enabled = true
@@ -55,5 +64,15 @@ describe DiscordBot::Manager do
     described_class.restart("second")
 
     expect([described_class.bot_for("first"), described_class.bot_for("second")]).to eq(bots)
+  end
+
+  it "clears a runtime when its worker exits" do
+    failed_bot = mock("failed bot").tap { |bot| bot.stubs(:run).raises("connection failed") }
+    DiscordBot::Bot.stubs(:init).returns(failed_bot)
+
+    described_class.restart(db)
+    Timeout.timeout(1) { Thread.pass until described_class.bot_for(db).nil? }
+
+    expect(described_class.bot_for(db)).to be_nil
   end
 end
