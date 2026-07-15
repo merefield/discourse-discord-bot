@@ -11,8 +11,6 @@ module ::DiscordBot
         DiscourseEvent.on(:post_created, &@post_created_handler)
       end
 
-      private
-
       def handle_post_created(post)
         return unless eligible_post?(post)
 
@@ -28,6 +26,8 @@ module ::DiscordBot
         delay_topic_announcement(translation_key)
         send_announcement(bot, post, category, translation_key)
       end
+
+      private
 
       def current_bot
         ::DiscordBot::Manager.bot_for(RailsMultisite::ConnectionManagement.current_db)
