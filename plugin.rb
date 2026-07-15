@@ -2,7 +2,7 @@
 
 # name: discourse-discord-bot
 # about: Integrate Discord Bots with Discourse
-# version: 0.3.32
+# version: 0.4.0
 # authors: Robert Barrow
 # url: https://github.com/merefield/discourse-discord-bot
 
