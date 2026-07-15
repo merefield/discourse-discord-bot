@@ -97,19 +97,13 @@ module ::DiscordBot::Utils
   end
 
   def convert_mentions(text)
-    text.gsub(/\B[<]@\d+[>]/) do |instance|
-      provider_uid = instance[2..19]
+    text.gsub(/<@!?(\d+)>/) do |mention|
+      provider_uid = Regexp.last_match(1)
       associated_user =
         UserAssociatedAccount.find_by(provider_uid: provider_uid, provider_name: "discord")
+      mentioned_user = User.find_by(id: associated_user&.user_id)
 
-      if associated_user.nil?
-        discord_username = event.bot.user(provider_uid).username
-        I18n.t("discord_bot.commands.disccopy.mention_prefix", discord_username: discord_username) +
-          instance[21..]
-      else
-        mentioned_user = User.find_by(id: associated_user.user_id)
-        "@" + mentioned_user.username + instance[21..]
-      end
+      mentioned_user ? "@#{mentioned_user.username}" : mention
     end
   end
 
