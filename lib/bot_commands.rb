@@ -290,7 +290,6 @@ module ::DiscordBot::BotCommands
 
         clean_house = false if !clean_house
         max_group_visibility = 0 if !max_group_visibility
-        include_automated_groups_args = false if !include_automated_groups
 
         discord_users = []
         eligible_discourse_groups = []
