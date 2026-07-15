@@ -1,32 +1,32 @@
 # frozen_string_literal: true
-# Discord bot class
-class ::DiscordBot::Bot
 
-  @@DiscordBot = nil
+module ::DiscordBot
+  # Builds configured Discord bot instances.
+  class Bot
+    class << self
+      def init
+        bot = Discordrb::Commands::CommandBot.new token: SiteSetting.discord_bot_token, prefix: "!"
+        register_ready_event(bot)
 
-  def self.init
-    @@DiscordBot = Discordrb::Commands::CommandBot.new token: SiteSetting.discord_bot_token, prefix: '!'
+        bot.include!(::DiscordBot::DiscordEventsHandlers::TransmitAnnouncement)
+        ::DiscordBot::BotCommands.manage_discord_commands(bot)
 
-    admin_channel_id =  SiteSetting.discord_bot_admin_channel_id
-    @@DiscordBot.ready do |event|
-      puts "Logged in as #{@@DiscordBot.profile.username} (ID:#{@@DiscordBot.profile.id}) | #{@@DiscordBot.servers.size} servers"
-      @@DiscordBot.send_message(admin_channel_id, "The Discourse admin bot has started his shift!")
-    end
+        bot
+      end
 
-    @@DiscordBot
-  end
+      private
 
-  def self.discord_bot
-    @@DiscordBot
-  end
-
-  def self.run_bot
-    bot = self.init
-
-    unless bot.nil?
-      ::DiscordBot::DiscourseEventsHandlers.hook_events
-      bot.include!(::DiscordBot::DiscordEventsHandlers::TransmitAnnouncement)
-      ::DiscordBot::BotCommands.manage_discord_commands(bot)
+      def register_ready_event(bot)
+        bot.ready do
+          Rails.logger.info(
+            "Discord Bot: Logged in as #{bot.profile.username} (ID:#{bot.profile.id}) | #{bot.servers.size} servers",
+          )
+          bot.send_message(
+            SiteSetting.discord_bot_admin_channel_id,
+            "The Discourse admin bot has started his shift!",
+          )
+        end
+      end
     end
   end
 end

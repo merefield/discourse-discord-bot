@@ -373,6 +373,5 @@ module ::DiscordBot::BotCommands
       end
     end
 
-    bot.run
   end
 end
