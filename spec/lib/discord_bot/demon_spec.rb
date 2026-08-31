@@ -1,8 +1,31 @@
 # frozen_string_literal: true
 
 describe DiscordBot::Demon do
+  before { described_class.reset_demons }
+
   it "uses a dedicated process name" do
     expect(described_class.prefix).to eq("discord_bot")
+  end
+
+  it "is only required when a site has a configured gateway" do
+    SiteSetting.discord_bot_enabled = false
+    SiteSetting.discord_bot_token = ""
+
+    expect(described_class.required?).to eq(false)
+
+    SiteSetting.discord_bot_enabled = true
+    SiteSetting.discord_bot_token = "token"
+
+    expect(described_class.required?).to eq(true)
+  end
+
+  it "does not create a process when no gateway is configured" do
+    SiteSetting.discord_bot_enabled = false
+    SiteSetting.discord_bot_token = ""
+
+    described_class.start
+
+    expect(described_class.demons).to be_empty
   end
 
   it "activates runtimes after acquiring cluster ownership" do

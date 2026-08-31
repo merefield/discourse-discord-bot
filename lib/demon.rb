@@ -6,8 +6,43 @@ module ::DiscordBot
   class Demon < ::Demon::Base
     RECONCILE_SECONDS = 10
 
-    def self.prefix
-      "discord_bot"
+    class << self
+      def prefix
+        "discord_bot"
+      end
+
+      def start(count = 1, verbose: false, logger: nil)
+        @start_options = { count: count, verbose: verbose, logger: logger }
+        super if required?
+      end
+
+      def ensure_running
+        unless required?
+          stop
+          return
+        end
+
+        if demons.blank?
+          options = @start_options || { count: 1, verbose: false, logger: nil }
+          start(options[:count], verbose: options[:verbose], logger: options[:logger])
+        else
+          demons.each_value { |demon| demon.start unless demon.started }
+          super
+        end
+      end
+
+      def required?
+        required = false
+        RailsMultisite::ConnectionManagement.each_connection do
+          required ||= SiteSetting.discord_bot_enabled && SiteSetting.discord_bot_token.present?
+        end
+        required
+      rescue StandardError => error
+        Rails.logger.warn(
+          "Discord Bot: Could not determine whether the gateway demon is needed: #{error}",
+        )
+        true
+      end
     end
 
     private
