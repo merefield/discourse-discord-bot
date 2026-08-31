@@ -26,20 +26,19 @@ gem "rest-client", "2.1.0.rc1"
 gem "discordrb-webhooks", "3.8.0", { require: false }
 gem "discordrb", "3.8.0"
 
+module ::DiscordBot
+  PLUGIN_NAME = "discourse-discord-bot"
+end
+
+Rails.autoloaders.main.push_dir(File.join(__dir__, "lib"), namespace: ::DiscordBot)
+
 enabled_site_setting :discord_bot_enabled
 
+require_relative "lib/engine"
 require_relative "lib/demon"
 register_demon_process ::DiscordBot::Demon
 
 after_initialize do
-  require_relative "lib/engine"
-  require_relative "lib/bot"
-  require_relative "lib/manager"
-  require_relative "lib/utils"
-  require_relative "lib/bot_commands"
-  require_relative "lib/discourse_events_handlers"
-  require_relative "lib/discord_events_handlers"
-
   ::DiscordBot::DiscourseEventsHandlers.hook_events
 
   on_enabled_change do
