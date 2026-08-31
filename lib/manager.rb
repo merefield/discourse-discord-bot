@@ -5,12 +5,12 @@ module ::DiscordBot
   class Manager
     STOP_TIMEOUT = 5
 
-    Runtime = Struct.new(:bot, :thread, keyword_init: true)
+    Runtime = Struct.new(:bot, :thread, :configuration, keyword_init: true)
 
     class << self
       def activate!
         @active = true
-        RailsMultisite::ConnectionManagement.each_connection { |db| restart(db) }
+        reconcile!
       end
 
       def deactivate!
@@ -30,6 +30,20 @@ module ::DiscordBot
         return if db.nil?
 
         RailsMultisite::ConnectionManagement.with_connection(db) { yield db }
+      end
+
+      def reconcile!
+        return unless @active
+
+        RailsMultisite::ConnectionManagement.each_connection do |db|
+          needs_restart =
+            RailsMultisite::ConnectionManagement.with_connection(db) do
+              active_configuration = registry_mutex.synchronize { runtimes[db]&.configuration }
+              active_configuration != desired_configuration
+            end
+
+          restart(db) if needs_restart
+        end
       end
 
       def restart(db)
@@ -78,9 +92,18 @@ module ::DiscordBot
         SiteSetting.discord_bot_enabled && SiteSetting.discord_bot_token.present?
       end
 
+      def desired_configuration
+        return unless should_start?
+
+        [SiteSetting.discord_bot_token, SiteSetting.discord_bot_message_copy_ignore_bot_messages]
+      end
+
       def start_runtime(db)
+        configuration = desired_configuration
+        return if configuration.nil?
+
         bot = ::DiscordBot::Bot.init
-        runtime = Runtime.new(bot: bot)
+        runtime = Runtime.new(bot: bot, configuration: configuration)
         registered = Queue.new
         thread =
           Thread.new do
