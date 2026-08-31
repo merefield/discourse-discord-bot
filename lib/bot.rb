@@ -3,7 +3,8 @@
 module ::DiscordBot
   # Builds configured Discord bot instances.
   class Bot
-    INTENTS = %i[servers server_members server_messages].freeze
+    INTENT_NAMES = %i[servers server_members server_messages].freeze
+    MESSAGE_CONTENT_INTENT = 1 << 15
 
     class << self
       def init
@@ -11,7 +12,7 @@ module ::DiscordBot
           Discordrb::Commands::CommandBot.new(
             token: SiteSetting.discord_bot_token,
             prefix: "!",
-            intents: INTENTS,
+            intents: gateway_intents,
             ignore_bots: SiteSetting.discord_bot_message_copy_ignore_bot_messages,
           )
         register_ready_event(bot)
@@ -46,6 +47,10 @@ module ::DiscordBot
       end
 
       private
+
+      def gateway_intents
+        INTENT_NAMES.sum { |intent| Discordrb::INTENTS.fetch(intent) } | MESSAGE_CONTENT_INTENT
+      end
 
       def stop_heartbeat(bot)
         gateway = bot.gateway if bot.respond_to?(:gateway)

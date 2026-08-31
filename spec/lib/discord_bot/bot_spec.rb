@@ -8,8 +8,10 @@ describe DiscordBot::Bot do
 
     expect(bot.commands.keys).to include(:disccopy, :disckick, :discsync)
     expect(bot.gateway.intents).to eq(
-      DiscordBot::Bot::INTENTS.sum { |intent| Discordrb::INTENTS.fetch(intent) },
+      DiscordBot::Bot::INTENT_NAMES.sum { |intent| Discordrb::INTENTS.fetch(intent) } |
+        DiscordBot::Bot::MESSAGE_CONTENT_INTENT,
     )
+    expect(bot.gateway.intents & (1 << 15)).to eq(1 << 15)
     expect(bot.instance_variable_get(:@ignore_bots)).to eq(true)
   end
 
