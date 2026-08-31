@@ -95,7 +95,11 @@ module ::DiscordBot
       def desired_configuration
         return unless should_start?
 
-        [SiteSetting.discord_bot_token, SiteSetting.discord_bot_message_copy_ignore_bot_messages]
+        [
+          SiteSetting.discord_bot_token,
+          SiteSetting.discord_bot_message_copy_ignore_bot_messages,
+          SiteSetting.discord_bot_admin_role_id,
+        ]
       end
 
       def start_runtime(db)
