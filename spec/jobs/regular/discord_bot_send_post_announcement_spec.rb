@@ -21,6 +21,15 @@ describe Jobs::DiscordBotSendPostAnnouncement do
         posted_category_name: category.name,
         url: Discourse.base_url + post.url,
       ),
+      false,
+      nil,
+      Digest::SHA256.hexdigest("default:#{post.id}").first(25),
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      true,
     )
 
     described_class.new.execute(post_id: post.id)

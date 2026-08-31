@@ -33,6 +33,15 @@ RSpec.describe Jobs::DiscordBotSendPostAnnouncement, type: :multisite do
       "Bot second-token",
       "second-channel",
       expected_message,
+      false,
+      nil,
+      Digest::SHA256.hexdigest("second:#{second_post.id}").first(25),
+      nil,
+      nil,
+      nil,
+      nil,
+      nil,
+      true,
     )
 
     described_class.new.perform(post_id: second_post.id, current_site_id: "second")

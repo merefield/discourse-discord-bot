@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "digest"
+
 module Jobs
   class DiscordBotSendPostAnnouncement < ::Jobs::Base
     def execute(args)
@@ -13,6 +15,15 @@ module Jobs
         discord_token,
         announcement[:channel_id],
         announcement[:message],
+        false,
+        nil,
+        announcement_nonce(post.id),
+        nil,
+        nil,
+        nil,
+        nil,
+        nil,
+        true,
       )
     end
 
@@ -20,6 +31,11 @@ module Jobs
 
     def discord_token
       "Bot #{SiteSetting.discord_bot_token.delete_prefix("Bot ")}"
+    end
+
+    def announcement_nonce(post_id)
+      db = RailsMultisite::ConnectionManagement.current_db
+      Digest::SHA256.hexdigest("#{db}:#{post_id}").first(25)
     end
   end
 end
