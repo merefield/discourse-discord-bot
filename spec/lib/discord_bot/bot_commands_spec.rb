@@ -88,6 +88,14 @@ describe DiscordBot::BotCommands do
     end
   end
 
+  describe ".default_history_count" do
+    it "caps the thread default at the configured maximum" do
+      SiteSetting.discord_bot_message_copy_max_messages = 20
+
+      expect(described_class.default_history_count).to eq(20)
+    end
+  end
+
   it "bounds the configured message limit" do
     expect { SiteSetting.discord_bot_message_copy_max_messages = 10_001 }.to raise_error(
       Discourse::InvalidParameters,

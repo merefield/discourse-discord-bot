@@ -25,6 +25,10 @@ module ::DiscordBot::BotCommands
     messages
   end
 
+  def self.default_history_count
+    [HISTORY_CHUNK_LIMIT, SiteSetting.discord_bot_message_copy_max_messages].min
+  end
+
   def self.discord_users_below_trust_level(min_trust_level)
     UserAssociatedAccount
       .joins(:user)
@@ -78,7 +82,7 @@ module ::DiscordBot::BotCommands
             event.respond I18n.t("discord_bot.commands.disccopy.error.must_specify_message_number")
             break
           end
-          requested_message_count = HISTORY_CHUNK_LIMIT
+          requested_message_count = default_history_count
         elsif requested_message_count.nil? || requested_message_count <= 0
           error_key =
             if thread_channel
