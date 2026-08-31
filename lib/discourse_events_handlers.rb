@@ -12,10 +12,17 @@ module ::DiscordBot
       end
 
       def handle_post_created(post)
-        return unless eligible_post?(post)
+        announcement = announcement_for(post)
+        return if announcement.nil?
 
-        bot = current_bot
-        return if bot.nil?
+        Jobs.enqueue_in(announcement[:delay], :discord_bot_send_post_announcement, post_id: post.id)
+      end
+
+      def announcement_for(post)
+        return unless SiteSetting.discord_bot_enabled
+        return if SiteSetting.discord_bot_token.blank?
+        return if SiteSetting.discord_bot_announcement_channel_id.blank?
+        return unless eligible_post?(post)
 
         category = post.topic.category
         return if category.nil?
@@ -23,20 +30,24 @@ module ::DiscordBot
         translation_key = translation_key_for(post, category)
         return if translation_key.nil?
 
-        delay_topic_announcement(translation_key)
-        send_announcement(bot, post, category, translation_key)
+        {
+          channel_id: SiteSetting.discord_bot_announcement_channel_id,
+          delay: announcement_delay(translation_key),
+          message:
+            I18n.t(
+              translation_key,
+              posted_category_name: category.name,
+              url: Discourse.base_url + post.url,
+            ),
+        }
       end
 
       private
 
-      def current_bot
-        ::DiscordBot::Manager.bot_for(RailsMultisite::ConnectionManagement.current_db)
-      end
+      def announcement_delay(translation_key)
+        return 0 unless translation_key == "discord_bot.discourse_events.announce_new_topic"
 
-      def delay_topic_announcement(translation_key)
-        return unless translation_key == "discord_bot.discourse_events.announce_new_topic"
-
-        sleep(SiteSetting.discord_bot_topic_announcement_delay_seconds)
+        SiteSetting.discord_bot_topic_announcement_delay_seconds.seconds
       end
 
       def eligible_post?(post)
@@ -59,16 +70,6 @@ module ::DiscordBot
         return unless post.post_number == 1 && topic_categories.include?(category.id.to_s)
 
         "discord_bot.discourse_events.announce_new_topic"
-      end
-
-      def send_announcement(bot, post, category, translation_key)
-        message =
-          I18n.t(
-            translation_key,
-            posted_category_name: category.name,
-            url: Discourse.base_url + post.url,
-          )
-        bot.send_message(SiteSetting.discord_bot_announcement_channel_id, message)
       end
     end
   end
