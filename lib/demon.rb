@@ -35,7 +35,10 @@ module ::DiscordBot
       acquired_lease = false
 
       if owns_lease
-        return false unless lease.renewing?
+        unless lease.renewing?
+          ::DiscordBot::Manager.deactivate!(graceful: false)
+          return false
+        end
 
         ::DiscordBot::Manager.reconcile!
         true
@@ -43,7 +46,7 @@ module ::DiscordBot
         acquired_lease = true
         lease.start_renewal do |error = nil|
           log("Discord Bot: Gateway ownership renewal failed: #{error}", level: :error) if error
-          ::DiscordBot::Manager.deactivate!
+          ::DiscordBot::Manager.deactivate!(graceful: false)
         end
         ::DiscordBot::Manager.activate!
         true

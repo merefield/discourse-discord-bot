@@ -25,8 +25,22 @@ describe DiscordBot::Demon do
   it "stops runtimes after losing cluster ownership" do
     lease = mock
     lease.expects(:renewing?).returns(false)
+    DiscordBot::Manager.expects(:deactivate!).with(graceful: false)
 
     expect(described_class.new(0).send(:refresh_ownership, lease, true)).to eq(false)
+  end
+
+  it "force stops runtimes when lease renewal fails" do
+    renewal_callback = nil
+    lease = Object.new
+    lease.define_singleton_method(:acquire) { true }
+    lease.define_singleton_method(:start_renewal) { |&callback| renewal_callback = callback }
+    DiscordBot::Manager.expects(:activate!)
+
+    expect(described_class.new(0).send(:refresh_ownership, lease, false)).to eq(true)
+
+    DiscordBot::Manager.expects(:deactivate!).with(graceful: false)
+    renewal_callback.call
   end
 
   it "releases ownership when runtime activation fails" do
