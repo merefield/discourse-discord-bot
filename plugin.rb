@@ -10,21 +10,21 @@ libdir = File.join(File.dirname(__FILE__), "vendor/discordrb/lib")
 
 $LOAD_PATH.unshift(libdir) if $LOAD_PATH.exclude?(libdir)
 
-gem "event_emitter", "0.2.6"
-gem "websocket", "1.2.11"
-gem "mutex_m", "0.3.0"
-gem "websocket-client-simple", "0.9.0"
+gem "event_emitter", "0.2.6", { require: false }
+gem "websocket", "1.2.11", { require: false }
+gem "mutex_m", "0.3.0", { require: false }
+gem "websocket-client-simple", "0.9.0", { require: false }
 gem "opus-ruby", "1.0.1", { require: false }
-gem "netrc", "0.11.0"
+gem "netrc", "0.11.0", { require: false }
 gem "mime-types-data", "3.2026.0414", require: false
 gem "mime-types", "3.7.0", { require: false }
-gem "domain_name", "0.6.20240107"
-gem "http-cookie", "1.0.8"
+gem "domain_name", "0.6.20240107", { require: false }
+gem "http-cookie", "1.0.8", { require: false }
 gem "http-accept", "1.7.0", { require: false }
-gem "rest-client", "2.1.0.rc1"
+gem "rest-client", "2.1.0.rc1", { require: false }
 
 gem "discordrb-webhooks", "3.8.0", { require: false }
-gem "discordrb", "3.8.0"
+gem "discordrb", "3.8.0", { require: false }
 
 module ::DiscordBot
   PLUGIN_NAME = "discourse-discord-bot"

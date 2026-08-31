@@ -8,6 +8,7 @@ module ::DiscordBot
 
     class << self
       def init
+        ::DiscordBot::DiscordrbLoader.load
         bot =
           Discordrb::Commands::CommandBot.new(
             token: SiteSetting.discord_bot_token,
@@ -17,7 +18,9 @@ module ::DiscordBot
           )
         register_ready_event(bot)
 
-        bot.include!(::DiscordBot::DiscordEventsHandlers::TransmitAnnouncement)
+        bot.message do |event|
+          ::DiscordBot::DiscordEventsHandlers::TransmitAnnouncement.handle_message(event)
+        end
         ::DiscordBot::BotCommands.manage_discord_commands(bot)
 
         bot

@@ -5,6 +5,7 @@ describe Jobs::DiscordBotSendPostAnnouncement do
   let(:post) { create_post(category: category) }
 
   before do
+    DiscordBot::DiscordrbLoader.load
     SiteSetting.discord_bot_enabled = true
     SiteSetting.discord_bot_token = "token"
     SiteSetting.discord_bot_announcement_channel_id = "123"

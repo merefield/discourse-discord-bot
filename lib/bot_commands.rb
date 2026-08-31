@@ -2,11 +2,12 @@
 module ::DiscordBot::BotCommands
   HISTORY_CHUNK_LIMIT = 100
 
-  THREAD_TYPES = [
-    Discordrb::Channel::TYPES[:news_thread],
-    Discordrb::Channel::TYPES[:public_thread],
-    Discordrb::Channel::TYPES[:private_thread],
-  ].freeze
+  def self.thread_types
+    @thread_types ||=
+      %i[news_thread public_thread private_thread].map do |type|
+        Discordrb::Channel::TYPES.fetch(type)
+      end
+  end
 
   def self.fetch_history(channel, before_id, count)
     messages = []
@@ -74,7 +75,7 @@ module ::DiscordBot::BotCommands
       description: I18n.t("discord_bot.commands.disccopy.description"),
     ) do |event, number_of_past_messages, target_category, target_topic|
       ::DiscordBot::Manager.with_bot_connection(event.bot) do
-        thread_channel = THREAD_TYPES.include?(event.channel.type)
+        thread_channel = thread_types.include?(event.channel.type)
         requested_message_count = Integer(number_of_past_messages, exception: false)
 
         if number_of_past_messages.blank?
@@ -177,7 +178,7 @@ module ::DiscordBot::BotCommands
                       )
                   )
                 # because of structure of Discord if we are copying thread we want the link on second message, ugh!
-                if THREAD_TYPES.include?(event.channel.type) && message_batch.length > 1
+                if thread_types.include?(event.channel.type) && message_batch.length > 1
                   link_to_discord = message_batch[1].link
                 else
                   link_to_discord = pm.link

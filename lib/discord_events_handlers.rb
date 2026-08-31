@@ -2,12 +2,6 @@
 module ::DiscordBot::DiscordEventsHandlers
   # Copy message to Discourse
   module TransmitAnnouncement
-    extend Discordrb::EventContainer
-
-    message do |event|
-      ::DiscordBot::DiscordEventsHandlers::TransmitAnnouncement.handle_message(event)
-    end
-
     def self.handle_message(event)
       ::DiscordBot::Manager.with_bot_connection(event.bot) do
         target = destination_for(event.message)

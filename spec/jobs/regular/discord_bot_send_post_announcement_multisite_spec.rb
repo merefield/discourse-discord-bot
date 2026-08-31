@@ -2,6 +2,7 @@
 
 RSpec.describe Jobs::DiscordBotSendPostAnnouncement, type: :multisite do
   before do
+    DiscordBot::DiscordrbLoader.load
     @original_site_setting_provider = SiteSetting.provider
     SiteSetting.provider = SiteSettings::LocalProcessProvider.new
   end
