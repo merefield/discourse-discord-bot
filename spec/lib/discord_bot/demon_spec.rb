@@ -8,6 +8,7 @@ describe DiscordBot::Demon do
   it "activates runtimes after acquiring cluster ownership" do
     lease = mock
     lease.expects(:acquire).returns(true)
+    lease.expects(:start_renewal)
     DiscordBot::Manager.expects(:activate!)
 
     expect(described_class.new(0).send(:refresh_ownership, lease, false)).to eq(true)
@@ -15,7 +16,7 @@ describe DiscordBot::Demon do
 
   it "reconciles runtimes while retaining cluster ownership" do
     lease = mock
-    lease.expects(:renew).returns(true)
+    lease.expects(:renewing?).returns(true)
     DiscordBot::Manager.expects(:reconcile!)
 
     expect(described_class.new(0).send(:refresh_ownership, lease, true)).to eq(true)
@@ -23,8 +24,7 @@ describe DiscordBot::Demon do
 
   it "stops runtimes after losing cluster ownership" do
     lease = mock
-    lease.expects(:renew).returns(false)
-    DiscordBot::Manager.expects(:deactivate!)
+    lease.expects(:renewing?).returns(false)
 
     expect(described_class.new(0).send(:refresh_ownership, lease, true)).to eq(false)
   end

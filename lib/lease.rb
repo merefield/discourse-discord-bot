@@ -4,6 +4,7 @@ module ::DiscordBot
   class Lease
     KEY = "discord_bot:gateway_owner"
     TTL = 30
+    REFRESH_SECONDS = TTL / 3
 
     RENEW_SCRIPT = DiscourseRedis::EvalHelper.new <<~LUA
         if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -21,10 +22,16 @@ module ::DiscordBot
         return 0
       LUA
 
-    def initialize(redis: Discourse.redis.without_namespace, key: KEY, token: SecureRandom.hex(16))
+    def initialize(
+      redis: Discourse.redis.without_namespace,
+      key: KEY,
+      token: SecureRandom.hex(16),
+      refresh_seconds: REFRESH_SECONDS
+    )
       @redis = redis
       @key = key
       @token = token
+      @refresh_seconds = refresh_seconds
     end
 
     def acquire
@@ -37,6 +44,33 @@ module ::DiscordBot
 
     def release
       RELEASE_SCRIPT.eval(@redis, [@key], [@token]).to_i == 1
+    end
+
+    def start_renewal(&on_lost)
+      return if renewing?
+
+      @renewal_thread =
+        Thread.new do
+          loop do
+            sleep @refresh_seconds
+            next if renew
+
+            on_lost.call
+            break
+          end
+        rescue StandardError => error
+          on_lost.call(error)
+        end
+    end
+
+    def renewing?
+      @renewal_thread&.alive? || false
+    end
+
+    def stop_renewal
+      @renewal_thread&.kill
+      @renewal_thread&.join
+      @renewal_thread = nil
     end
   end
 end

@@ -4,7 +4,7 @@ require "demon/base"
 
 module ::DiscordBot
   class Demon < ::Demon::Base
-    LEASE_REFRESH_SECONDS = 10
+    RECONCILE_SECONDS = 10
 
     def self.prefix
       "discord_bot"
@@ -20,26 +20,28 @@ module ::DiscordBot
 
       until stopping
         owns_lease = refresh_ownership(lease, owns_lease)
-        LEASE_REFRESH_SECONDS.times do
+        RECONCILE_SECONDS.times do
           break if stopping
           sleep 1
         end
       end
     ensure
       ::DiscordBot::Manager.deactivate! if owns_lease
+      lease&.stop_renewal
       release_lease(lease) if owns_lease
     end
 
     def refresh_ownership(lease, owns_lease)
       if owns_lease
-        unless lease.renew
-          ::DiscordBot::Manager.deactivate!
-          return false
-        end
+        return false unless lease.renewing?
 
         ::DiscordBot::Manager.reconcile!
         true
       elsif lease.acquire
+        lease.start_renewal do |error = nil|
+          log("Discord Bot: Gateway ownership renewal failed: #{error}", level: :error) if error
+          ::DiscordBot::Manager.deactivate!
+        end
         ::DiscordBot::Manager.activate!
         true
       else
