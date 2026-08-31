@@ -28,4 +28,16 @@ describe DiscordBot::Demon do
 
     expect(described_class.new(0).send(:refresh_ownership, lease, true)).to eq(false)
   end
+
+  it "releases ownership when runtime activation fails" do
+    lease = mock
+    lease.expects(:acquire).returns(true)
+    lease.expects(:start_renewal)
+    lease.expects(:stop_renewal)
+    lease.expects(:release)
+    DiscordBot::Manager.expects(:activate!).raises("activation failed")
+    DiscordBot::Manager.expects(:deactivate!)
+
+    expect(described_class.new(0).send(:refresh_ownership, lease, false)).to eq(false)
+  end
 end
