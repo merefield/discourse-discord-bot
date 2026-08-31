@@ -97,7 +97,7 @@ module ::DiscordBot
         return if runtime.nil?
 
         begin
-          runtime.bot.stop
+          ::DiscordBot::Bot.stop(runtime.bot)
         rescue StandardError => e
           Rails.logger.error("Discord Bot: There was a problem stopping the bot: #{e}")
         ensure

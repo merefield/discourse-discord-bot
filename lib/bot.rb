@@ -14,6 +14,18 @@ module ::DiscordBot
         bot
       end
 
+      def stop(bot)
+        bot.stop
+
+        gateway = bot.gateway if bot.respond_to?(:gateway)
+        heartbeat_thread = gateway&.instance_variable_get(:@heartbeat_thread)
+        return if heartbeat_thread.nil?
+
+        heartbeat_thread.kill
+        heartbeat_thread.join
+        gateway.instance_variable_set(:@heartbeat_thread, nil)
+      end
+
       private
 
       def register_ready_event(bot)
