@@ -111,6 +111,8 @@ module ::DiscordBot::BotCommands
         total_copied_messages = 0
         current_topic_id = nil
         bot_user_id = Base64.decode64(bot.token.split(" ")[1].split(".")[0]).to_i
+        prepared_posts =
+          past_messages.compact.zip(::DiscordBot::Utils.prepare_posts(past_messages.compact)).to_h
 
         past_messages
           .reverse
@@ -123,7 +125,7 @@ module ::DiscordBot::BotCommands
                 next
               end
 
-              posting_user, raw = ::DiscordBot::Utils.prepare_post(pm)
+              posting_user, raw = prepared_posts.fetch(pm)
 
               if topic_index == 0 && destination_topic.nil?
                 raw =
