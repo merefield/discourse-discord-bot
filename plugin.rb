@@ -28,6 +28,9 @@ gem "discordrb", "3.8.0"
 
 enabled_site_setting :discord_bot_enabled
 
+require_relative "lib/demon"
+register_demon_process ::DiscordBot::Demon
+
 after_initialize do
   require_relative "lib/engine"
   require_relative "lib/bot"
@@ -38,11 +41,6 @@ after_initialize do
   require_relative "lib/discord_events_handlers"
 
   ::DiscordBot::DiscourseEventsHandlers.hook_events
-
-  RailsMultisite::ConnectionManagement.each_connection do
-    db = RailsMultisite::ConnectionManagement.current_db
-    ::DiscordBot::Manager.restart(db)
-  end
 
   on_enabled_change do
     db = RailsMultisite::ConnectionManagement.current_db

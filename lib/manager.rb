@@ -8,14 +8,28 @@ module ::DiscordBot
     Runtime = Struct.new(:bot, :thread, keyword_init: true)
 
     class << self
+      def activate!
+        @active = true
+        RailsMultisite::ConnectionManagement.each_connection { |db| restart(db) }
+      end
+
+      def deactivate!
+        @active = false
+        stop_all
+      end
+
       def bot_for(db)
         registry_mutex.synchronize { runtimes[db]&.bot }
       end
 
       def restart(db)
-        lifecycle_mutex.synchronize do
-          stop_runtime(delete_runtime(db))
-          start_runtime(db) if should_start?
+        return unless @active
+
+        RailsMultisite::ConnectionManagement.with_connection(db) do
+          lifecycle_mutex.synchronize do
+            stop_runtime(delete_runtime(db))
+            start_runtime(db) if should_start?
+          end
         end
       end
 
@@ -51,8 +65,7 @@ module ::DiscordBot
       end
 
       def should_start?
-        Discourse.running_in_rack? && SiteSetting.discord_bot_enabled &&
-          SiteSetting.discord_bot_token.present?
+        SiteSetting.discord_bot_enabled && SiteSetting.discord_bot_token.present?
       end
 
       def start_runtime(db)

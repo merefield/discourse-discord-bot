@@ -16,11 +16,12 @@ describe DiscordBot::Manager do
   before do
     SiteSetting.discord_bot_enabled = true
     SiteSetting.discord_bot_token = "token"
-    Discourse.stubs(:running_in_rack?).returns(true)
     RailsMultisite::ConnectionManagement.stubs(:establish_connection)
+    RailsMultisite::ConnectionManagement.stubs(:each_connection)
+    described_class.activate!
   end
 
-  after { described_class.stop_all }
+  after { described_class.deactivate! }
 
   it "replaces the active runtime" do
     DiscordBot::Bot.stubs(:init).returns(bots.first, bots.second)
@@ -49,8 +50,8 @@ describe DiscordBot::Manager do
     expect(described_class.bot_for(db)).to be_nil
   end
 
-  it "stays stopped outside a web server process" do
-    Discourse.stubs(:running_in_rack?).returns(false)
+  it "stays stopped outside the dedicated process" do
+    described_class.deactivate!
 
     described_class.restart(db)
 
