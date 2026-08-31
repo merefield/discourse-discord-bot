@@ -8,6 +8,23 @@ module ::DiscordBot::BotCommands
     Discordrb::Channel::TYPES[:private_thread],
   ].freeze
 
+  def self.fetch_history(channel, before_id, count)
+    messages = []
+
+    while messages.length < count
+      batch_size = [count - messages.length, HISTORY_CHUNK_LIMIT].min
+      batch = channel.history(batch_size, before_id)
+      break if batch.empty?
+
+      messages.concat(batch)
+      break if batch.length < batch_size
+
+      before_id = batch.last.id
+    end
+
+    messages
+  end
+
   def self.manage_discord_commands(bot)
     bot.bucket :admin_tasks, limit: 3, time_span: 60, delay: 10
 
@@ -23,45 +40,38 @@ module ::DiscordBot::BotCommands
       description: I18n.t("discord_bot.commands.disccopy.description"),
     ) do |event, number_of_past_messages, target_category, target_topic|
       ::DiscordBot::Manager.with_bot_connection(event.bot) do
-        past_messages = []
+        thread_channel = THREAD_TYPES.include?(event.channel.type)
+        requested_message_count = Integer(number_of_past_messages, exception: false)
 
-        if !THREAD_TYPES.include?(event.channel.type)
-          if !(number_of_past_messages.to_i > 0)
+        if number_of_past_messages.blank?
+          if !thread_channel
             event.respond I18n.t("discord_bot.commands.disccopy.error.must_specify_message_number")
             break
           end
-        else
-          if number_of_past_messages.present? && !(number_of_past_messages.to_i > 0)
-            event.respond I18n.t(
-                            "discord_bot.commands.disccopy.error.must_specify_message_number_as_integer",
-                          )
-            break
-          end
+          requested_message_count = HISTORY_CHUNK_LIMIT
+        elsif requested_message_count.nil? || requested_message_count <= 0
+          error_key =
+            if thread_channel
+              "discord_bot.commands.disccopy.error.must_specify_message_number_as_integer"
+            else
+              "discord_bot.commands.disccopy.error.must_specify_message_number"
+            end
+          event.respond I18n.t(error_key)
+          break
         end
 
-        number_of_past_messages = number_of_past_messages || HISTORY_CHUNK_LIMIT
-        if number_of_past_messages.to_i <= HISTORY_CHUNK_LIMIT
-          past_messages = event.channel.history(number_of_past_messages.to_i, event.message.id)
-        else
-          number_of_messages_retrieved = 0
-          last_id = event.message.id
-          while number_of_messages_retrieved < number_of_past_messages.to_i
-            retrieve_this_time =
-              (
-                if number_of_past_messages.to_i - number_of_messages_retrieved > HISTORY_CHUNK_LIMIT
-                  HISTORY_CHUNK_LIMIT
-                else
-                  number_of_past_messages.to_i - number_of_messages_retrieved
-                end
-              )
-            past_messages = event.channel.history(retrieve_this_time, last_id)
-            last_id = past_messages.last.id.to_i
-            number_of_messages_retrieved += retrieve_this_time
-          end
+        if requested_message_count > SiteSetting.discord_bot_message_copy_max_messages
+          event.respond I18n.t(
+                          "discord_bot.commands.disccopy.error.message_number_exceeds_limit",
+                          limit: SiteSetting.discord_bot_message_copy_max_messages,
+                        )
+          break
         end
+
+        past_messages = fetch_history(event.channel, event.message.id, requested_message_count)
 
         # if beginning of thread, strip the first message and replace it with its parent message that kicked off the thread (ugh!)
-        if past_messages.last.content.blank? && THREAD_TYPES.include?(event.channel.type)
+        if past_messages.any? && past_messages.last.content.blank? && thread_channel
           past_messages =
             past_messages[0..past_messages.length - 2] << event
               .bot

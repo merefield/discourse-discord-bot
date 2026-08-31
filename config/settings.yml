@@ -34,6 +34,15 @@ plugins:
   discord_bot_message_copy_topic_size_limit:
     default: 100
     client: false
+    type: integer
+    min: 1
+    max: 1000
+  discord_bot_message_copy_max_messages:
+    default: 1000
+    client: false
+    type: integer
+    min: 1
+    max: 10000
   discord_bot_message_copy_default_category:
     client: false
     default: ''
