@@ -9,13 +9,15 @@ module ::DiscordBot
 
     class << self
       def activate!
-        @active = true
+        lifecycle_mutex.synchronize { @active = true }
         reconcile!
       end
 
       def deactivate!(graceful: true)
-        @active = false
-        stop_all(graceful: graceful)
+        lifecycle_mutex.synchronize do
+          @active = false
+          stop_all_without_lock(graceful: graceful)
+        end
       end
 
       def bot_for(db)
@@ -33,7 +35,7 @@ module ::DiscordBot
       end
 
       def reconcile!
-        return unless @active
+        return unless active?
 
         RailsMultisite::ConnectionManagement.each_connection do |db|
           needs_restart =
@@ -47,10 +49,12 @@ module ::DiscordBot
       end
 
       def restart(db)
-        return unless @active
+        return unless active?
 
         RailsMultisite::ConnectionManagement.with_connection(db) do
           lifecycle_mutex.synchronize do
+            return unless @active
+
             stop_runtime(delete_runtime(db))
             start_runtime(db) if should_start?
           end
@@ -58,19 +62,25 @@ module ::DiscordBot
       end
 
       def stop_all(graceful: true)
-        lifecycle_mutex.synchronize do
-          active_runtimes =
-            registry_mutex.synchronize do
-              current_runtimes = runtimes.values
-              runtimes.clear
-              current_runtimes
-            end
-
-          active_runtimes.each { |runtime| stop_runtime(runtime, graceful: graceful) }
-        end
+        lifecycle_mutex.synchronize { stop_all_without_lock(graceful: graceful) }
       end
 
       private
+
+      def active?
+        lifecycle_mutex.synchronize { @active }
+      end
+
+      def stop_all_without_lock(graceful:)
+        active_runtimes =
+          registry_mutex.synchronize do
+            current_runtimes = runtimes.values
+            runtimes.clear
+            current_runtimes
+          end
+
+        active_runtimes.each { |runtime| stop_runtime(runtime, graceful: graceful) }
+      end
 
       def delete_runtime(db)
         registry_mutex.synchronize { runtimes.delete(db) }

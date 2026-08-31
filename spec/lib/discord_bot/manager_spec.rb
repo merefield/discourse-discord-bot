@@ -58,6 +58,32 @@ describe DiscordBot::Manager do
     expect(described_class.bot_for(db)).to be_nil
   end
 
+  it "does not start a runtime after deactivation begins" do
+    restart_ready = Queue.new
+    continue_restart = Queue.new
+    RailsMultisite::ConnectionManagement
+      .stubs(:with_connection)
+      .with do |database|
+        restart_ready << true
+        continue_restart.pop
+        database == db
+      end
+      .yields
+    DiscordBot::Bot.expects(:init).never
+
+    restart_thread = Thread.new { described_class.restart(db) }
+    Timeout.timeout(1) { restart_ready.pop }
+    described_class.deactivate!
+    continue_restart << true
+    Timeout.timeout(1) { restart_thread.join }
+
+    expect(described_class.bot_for(db)).to be_nil
+  ensure
+    continue_restart << true if continue_restart&.empty?
+    restart_thread&.kill
+    restart_thread&.join
+  end
+
   it "keeps a runtime for each multisite database" do
     DiscordBot::Bot.stubs(:init).returns(*bots)
 
