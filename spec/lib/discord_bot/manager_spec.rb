@@ -109,24 +109,53 @@ describe DiscordBot::Manager do
     expect(described_class.bot_for(db)).to be_nil
   end
 
-  it "terminates a worker that does not stop" do
+  it "terminates Discord-owned threads when graceful shutdown fails" do
     worker_started = Queue.new
-    keep_running = Queue.new
+    websocket_started = Queue.new
+    event_started = Queue.new
+    gateway = Object.new
+    websocket_thread = nil
+    gateway.define_singleton_method(:run) do
+      websocket_thread =
+        Thread.new do
+          websocket_started << true
+          sleep
+        end
+      websocket_thread.join
+    end
+    gateway.define_singleton_method(:kill) { websocket_thread&.kill }
+
     stuck_bot = Object.new
+    event_thread =
+      Thread.new do
+        event_started << true
+        sleep
+      end
+    stuck_bot.define_singleton_method(:gateway) { gateway }
+    stuck_bot.define_singleton_method(:event_threads) { [event_thread] }
     stuck_bot.define_singleton_method(:run) do
       worker_started << Thread.current
-      keep_running.pop
+      gateway.run
     end
     stuck_bot.define_singleton_method(:stop) { raise "stop failed" }
     DiscordBot::Bot.stubs(:init).returns(stuck_bot)
 
     described_class.restart(db)
     worker_thread = Timeout.timeout(1) { worker_started.pop }
+    Timeout.timeout(1) { websocket_started.pop }
+    Timeout.timeout(1) { event_started.pop }
     SiteSetting.discord_bot_enabled = false
     stub_const(described_class, :STOP_TIMEOUT, 0.01) do
       Timeout.timeout(1) { described_class.restart(db) }
     end
 
-    expect(worker_thread).not_to be_alive
+    expect([worker_thread, websocket_thread, event_thread]).to all(
+      satisfy { |thread| !thread.alive? },
+    )
+  ensure
+    [worker_thread, websocket_thread, event_thread].compact.each do |thread|
+      thread.kill
+      thread.join
+    end
   end
 end

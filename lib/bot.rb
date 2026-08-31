@@ -28,6 +28,23 @@ module ::DiscordBot
         stop_heartbeat(bot)
       end
 
+      def force_stop(bot)
+        gateway = bot.gateway if bot.respond_to?(:gateway)
+        begin
+          gateway&.kill
+        ensure
+          event_threads(bot).each(&:kill)
+        end
+      ensure
+        stop_heartbeat(bot)
+      end
+
+      def event_threads(bot)
+        return [] unless bot.respond_to?(:event_threads)
+
+        bot.event_threads&.dup || []
+      end
+
       private
 
       def stop_heartbeat(bot)

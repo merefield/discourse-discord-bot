@@ -13,9 +13,9 @@ module ::DiscordBot
         reconcile!
       end
 
-      def deactivate!
+      def deactivate!(graceful: true)
         @active = false
-        stop_all
+        stop_all(graceful: graceful)
       end
 
       def bot_for(db)
@@ -57,7 +57,7 @@ module ::DiscordBot
         end
       end
 
-      def stop_all
+      def stop_all(graceful: true)
         lifecycle_mutex.synchronize do
           active_runtimes =
             registry_mutex.synchronize do
@@ -66,7 +66,7 @@ module ::DiscordBot
               current_runtimes
             end
 
-          active_runtimes.each { |runtime| stop_runtime(runtime) }
+          active_runtimes.each { |runtime| stop_runtime(runtime, graceful: graceful) }
         end
       end
 
@@ -130,20 +130,47 @@ module ::DiscordBot
         registry_mutex.synchronize { runtimes.delete(db) if runtimes[db].equal?(runtime) }
       end
 
-      def stop_runtime(runtime)
+      def stop_runtime(runtime, graceful: true)
         return if runtime.nil?
 
+        clean_shutdown = true
         begin
           ::DiscordBot::Bot.stop(runtime.bot)
         rescue StandardError => e
+          clean_shutdown = false
           Rails.logger.error("Discord Bot: There was a problem stopping the bot: #{e}")
-        ensure
-          unless runtime.thread.join(STOP_TIMEOUT)
-            Rails.logger.warn("Discord Bot: Timed out stopping the bot; terminating its thread")
-            runtime.thread.kill
-            runtime.thread.join
-          end
         end
+
+        clean_shutdown &&= wait_for_runtime(runtime, graceful ? STOP_TIMEOUT : 0)
+        return if clean_shutdown
+
+        Rails.logger.warn("Discord Bot: Forcing remaining gateway and event threads to stop")
+        threads = active_runtime_threads(runtime)
+        ::DiscordBot::Bot.force_stop(runtime.bot)
+        threads.concat(active_runtime_threads(runtime)).uniq.each(&:kill)
+        threads.each(&:join)
+        runtime.thread.kill if runtime.thread.alive?
+        runtime.thread.join
+      end
+
+      def wait_for_runtime(runtime, timeout)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+
+        loop do
+          threads = active_runtime_threads(runtime)
+          return true if threads.empty?
+
+          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          return false unless remaining.positive?
+
+          threads.first.join([remaining, 0.05].min)
+        end
+      end
+
+      def active_runtime_threads(runtime)
+        [runtime.thread, *::DiscordBot::Bot.event_threads(runtime.bot)].compact.uniq.select(
+          &:alive?
+        )
       end
     end
   end

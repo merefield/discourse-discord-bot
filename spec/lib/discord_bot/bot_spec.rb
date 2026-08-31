@@ -39,4 +39,26 @@ describe DiscordBot::Bot do
     heartbeat_thread&.kill
     heartbeat_thread&.join
   end
+
+  it "force stops websocket and event threads" do
+    websocket_thread = Thread.new { sleep }
+    event_thread = Thread.new { sleep }
+    heartbeat_thread = Thread.new { sleep }
+    gateway = stub(kill: websocket_thread.kill)
+    gateway.instance_variable_set(:@heartbeat_thread, heartbeat_thread)
+    bot = stub(gateway: gateway, event_threads: [event_thread])
+
+    described_class.force_stop(bot)
+    websocket_thread.join
+    event_thread.join
+
+    expect([websocket_thread, event_thread, heartbeat_thread]).to all(
+      satisfy { |thread| !thread.alive? },
+    )
+  ensure
+    [websocket_thread, event_thread, heartbeat_thread].compact.each do |thread|
+      thread.kill
+      thread.join
+    end
+  end
 end
