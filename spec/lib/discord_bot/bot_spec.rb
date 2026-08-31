@@ -7,6 +7,10 @@ describe DiscordBot::Bot do
     bot = described_class.init
 
     expect(bot.commands.keys).to include(:disccopy, :disckick, :discsync)
+    expect(bot.gateway.intents).to eq(
+      DiscordBot::Bot::INTENTS.sum { |intent| Discordrb::INTENTS.fetch(intent) },
+    )
+    expect(bot.instance_variable_get(:@ignore_bots)).to eq(true)
   end
 
   it "terminates the gateway heartbeat when stopping" do

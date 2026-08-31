@@ -3,9 +3,17 @@
 module ::DiscordBot
   # Builds configured Discord bot instances.
   class Bot
+    INTENTS = %i[servers server_members server_messages].freeze
+
     class << self
       def init
-        bot = Discordrb::Commands::CommandBot.new token: SiteSetting.discord_bot_token, prefix: "!"
+        bot =
+          Discordrb::Commands::CommandBot.new(
+            token: SiteSetting.discord_bot_token,
+            prefix: "!",
+            intents: INTENTS,
+            ignore_bots: SiteSetting.discord_bot_message_copy_ignore_bot_messages,
+          )
         register_ready_event(bot)
 
         bot.include!(::DiscordBot::DiscordEventsHandlers::TransmitAnnouncement)
