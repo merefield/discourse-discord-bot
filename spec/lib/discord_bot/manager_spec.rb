@@ -121,6 +121,7 @@ describe DiscordBot::Manager do
           websocket_started << true
           sleep
         end
+      gateway.instance_variable_set(:@ws_thread, websocket_thread)
       websocket_thread.join
     end
     gateway.define_singleton_method(:kill) { websocket_thread&.kill }

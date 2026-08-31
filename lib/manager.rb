@@ -145,10 +145,10 @@ module ::DiscordBot
         return if clean_shutdown
 
         Rails.logger.warn("Discord Bot: Forcing remaining gateway and event threads to stop")
-        threads = active_runtime_threads(runtime)
+        event_threads = ::DiscordBot::Bot.event_threads(runtime.bot)
         ::DiscordBot::Bot.force_stop(runtime.bot)
-        threads.concat(active_runtime_threads(runtime)).uniq.each(&:kill)
-        threads.each(&:join)
+        event_threads.concat(::DiscordBot::Bot.event_threads(runtime.bot)).uniq.each(&:kill)
+        event_threads.each(&:join)
         runtime.thread.kill if runtime.thread.alive?
         runtime.thread.join
       end

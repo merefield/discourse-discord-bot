@@ -33,9 +33,8 @@ module ::DiscordBot
       end
 
       def force_stop(bot)
-        gateway = bot.gateway if bot.respond_to?(:gateway)
         begin
-          gateway&.kill
+          stop_websocket(bot)
         ensure
           event_threads(bot).each(&:kill)
         end
@@ -53,6 +52,19 @@ module ::DiscordBot
 
       def gateway_intents
         INTENT_NAMES.sum { |intent| Discordrb::INTENTS.fetch(intent) } | MESSAGE_CONTENT_INTENT
+      end
+
+      def stop_websocket(bot)
+        gateway = bot.gateway if bot.respond_to?(:gateway)
+        websocket_thread = gateway&.instance_variable_get(:@ws_thread)
+        return if websocket_thread.nil?
+
+        begin
+          gateway.kill
+        ensure
+          websocket_thread.kill
+          websocket_thread.join
+        end
       end
 
       def stop_heartbeat(bot)

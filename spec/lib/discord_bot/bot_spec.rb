@@ -46,8 +46,10 @@ describe DiscordBot::Bot do
     websocket_thread = Thread.new { sleep }
     event_thread = Thread.new { sleep }
     heartbeat_thread = Thread.new { sleep }
-    gateway = stub(kill: websocket_thread.kill)
+    gateway = Object.new
+    gateway.instance_variable_set(:@ws_thread, websocket_thread)
     gateway.instance_variable_set(:@heartbeat_thread, heartbeat_thread)
+    gateway.define_singleton_method(:kill) { websocket_thread.kill }
     bot = stub(gateway: gateway, event_threads: [event_thread])
 
     described_class.force_stop(bot)
