@@ -5,7 +5,7 @@ require "digest"
 module Jobs
   class DiscordBotSendPostAnnouncement < ::Jobs::Base
     def execute(args)
-      ::DiscordBot::DiscordrbLoader.load
+      ::DiscordBot::DiscordrbLoader.load_api
       post = Post.find_by(id: args[:post_id])
       return if post.nil?
 
