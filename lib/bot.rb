@@ -30,13 +30,15 @@ module ::DiscordBot
 
       def register_ready_event(bot)
         bot.ready do
-          Rails.logger.info(
-            "Discord Bot: Logged in as #{bot.profile.username} (ID:#{bot.profile.id}) | #{bot.servers.size} servers",
-          )
-          bot.send_message(
-            SiteSetting.discord_bot_admin_channel_id,
-            "The Discourse admin bot has started his shift!",
-          )
+          ::DiscordBot::Manager.with_bot_connection(bot) do
+            Rails.logger.info(
+              "Discord Bot: Logged in as #{bot.profile.username} (ID:#{bot.profile.id}) | #{bot.servers.size} servers",
+            )
+            bot.send_message(
+              SiteSetting.discord_bot_admin_channel_id,
+              "The Discourse admin bot has started his shift!",
+            )
+          end
         end
       end
     end

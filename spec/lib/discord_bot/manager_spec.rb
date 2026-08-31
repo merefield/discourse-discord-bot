@@ -67,6 +67,16 @@ describe DiscordBot::Manager do
     expect([described_class.bot_for("first"), described_class.bot_for("second")]).to eq(bots)
   end
 
+  it "runs bot callbacks in their owning database" do
+    DiscordBot::Bot.stubs(:init).returns(bots.first)
+    described_class.restart("first")
+    connected_database = nil
+
+    described_class.with_bot_connection(bots.first) { |database| connected_database = database }
+
+    expect(connected_database).to eq("first")
+  end
+
   it "clears a runtime when its worker exits" do
     failed_bot = mock("failed bot").tap { |bot| bot.stubs(:run).raises("connection failed") }
     DiscordBot::Bot.stubs(:init).returns(failed_bot)

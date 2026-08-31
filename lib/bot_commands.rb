@@ -22,9 +22,7 @@ module ::DiscordBot::BotCommands
       required_roles: [SiteSetting.discord_bot_admin_role_id],
       description: I18n.t("discord_bot.commands.disccopy.description"),
     ) do |event, number_of_past_messages, target_category, target_topic|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
+      ::DiscordBot::Manager.with_bot_connection(event.bot) do
         past_messages = []
 
         if !THREAD_TYPES.include?(event.channel.type)
@@ -211,10 +209,7 @@ module ::DiscordBot::BotCommands
       required_roles: [SiteSetting.discord_bot_admin_role_id],
       description: I18n.t("discord_bot.commands.disckick.description"),
     ) do |event, min_trust_level|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
-
+      ::DiscordBot::Manager.with_bot_connection(event.bot) do
         min_trust_level = 3 if !min_trust_level
 
         discordusers = []
@@ -284,10 +279,7 @@ module ::DiscordBot::BotCommands
       required_roles: [SiteSetting.discord_bot_admin_role_id],
       description: "Block users whose trust level is below a certain integer on discourse",
     ) do |event, clean_house, max_group_visibility, include_automated_groups|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
-
+      ::DiscordBot::Manager.with_bot_connection(event.bot) do
         clean_house = false if !clean_house
         max_group_visibility = 0 if !max_group_visibility
 
@@ -464,11 +456,7 @@ module ::DiscordBot::BotCommands
     end
 
     bot.message(with_text: "Ping!") do |event|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
-        event.respond "Pong!"
-      end
+      ::DiscordBot::Manager.with_bot_connection(event.bot) { event.respond "Pong!" }
     end
   end
 end

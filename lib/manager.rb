@@ -22,6 +22,16 @@ module ::DiscordBot
         registry_mutex.synchronize { runtimes[db]&.bot }
       end
 
+      def with_bot_connection(bot)
+        db =
+          registry_mutex.synchronize do
+            runtimes.find { |_database, runtime| runtime.bot.equal?(bot) }&.first
+          end
+        return if db.nil?
+
+        RailsMultisite::ConnectionManagement.with_connection(db) { yield db }
+      end
+
       def restart(db)
         return unless @active
 
