@@ -2,6 +2,9 @@ plugins:
   discord_bot_enabled:
     default: true
     client: false
+  discord_bot_verbose_logging:
+    default: false
+    client: false
   discord_bot_token:
     default: ''
     client: false

@@ -163,9 +163,30 @@ describe DiscordBot::Manager do
     expect(connected_database).to eq("first")
   end
 
+  it "logs per-site gateway lifecycle details at warn level when verbose logging is enabled" do
+    SiteSetting.discord_bot_verbose_logging = true
+    DiscordBot::Bot.stubs(:init).returns(bots.first)
+    Rails.logger.expects(:warn).with("Discord Bot: [database=#{db}] Starting gateway runtime")
+    Rails.logger.expects(:warn).with("Discord Bot: [database=#{db}] Stopping gateway runtime")
+    Rails.logger.expects(:warn).with("Discord Bot: [database=#{db}] Stopped gateway runtime")
+
+    described_class.restart(db)
+    described_class.deactivate!
+
+    expect(described_class.bot_for(db)).to be_nil
+  end
+
   it "clears a runtime when its worker exits" do
     failed_bot = mock("failed bot").tap { |bot| bot.stubs(:run).raises("connection failed") }
     DiscordBot::Bot.stubs(:init).returns(failed_bot)
+    Rails
+      .logger
+      .expects(:error)
+      .with("Discord Bot: [database=#{db}] Gateway runtime failed: RuntimeError: connection failed")
+    Rails
+      .logger
+      .expects(:warn)
+      .with("Discord Bot: [database=#{db}] Gateway runtime exited unexpectedly")
 
     described_class.restart(db)
     Timeout.timeout(1) { Thread.pass until described_class.bot_for(db).nil? }

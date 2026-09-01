@@ -79,9 +79,10 @@ module ::DiscordBot
 
       def register_ready_event(bot)
         bot.ready do
-          ::DiscordBot::Manager.with_bot_connection(bot) do
-            Rails.logger.info(
-              "Discord Bot: Logged in as #{bot.profile.username} (ID:#{bot.profile.id}) | #{bot.servers.size} servers",
+          ::DiscordBot::Manager.with_bot_connection(bot) do |db|
+            ::DiscordBot::LifecycleLogger.lifecycle(
+              "Logged in as #{bot.profile.username} (ID:#{bot.profile.id}) | #{bot.servers.size} servers",
+              db: db,
             )
             bot.send_message(
               SiteSetting.discord_bot_admin_channel_id,

@@ -1,6 +1,7 @@
 en:
   site_settings:
     discord_bot_enabled: "Enable the Discourse Discord bot plugin"
+    discord_bot_verbose_logging: "Log detailed Discord gateway lifecycle diagnostics at WARN level so they appear in production logs. Keep this disabled during normal operation."
     discord_bot_token: "Enter your bot TOKEN from Discord here"
     discord_bot_admin_channel_id: "The id of your admin text channel on Discord"
     discord_bot_admin_role_id: "The id of your admin role on Discord for which commands are permitted"

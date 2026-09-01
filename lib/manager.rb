@@ -5,7 +5,7 @@ module ::DiscordBot
   class Manager
     STOP_TIMEOUT = 5
 
-    Runtime = Struct.new(:bot, :thread, :configuration, keyword_init: true)
+    Runtime = Struct.new(:bot, :thread, :configuration, :db, :stopping, keyword_init: true)
 
     class << self
       def activate!
@@ -143,8 +143,9 @@ module ::DiscordBot
         configuration = desired_configuration
         return if configuration.nil?
 
+        ::DiscordBot::LifecycleLogger.verbose("Starting gateway runtime", db: db)
         bot = ::DiscordBot::Bot.init
-        runtime = Runtime.new(bot: bot, configuration: configuration)
+        runtime = Runtime.new(bot: bot, configuration: configuration, db: db, stopping: false)
         registered = Queue.new
         ownership_mutex.synchronize do
           return unless active_generation_without_lock?(generation)
@@ -166,13 +167,22 @@ module ::DiscordBot
         RailsMultisite::ConnectionManagement.establish_connection(db: db)
         runtime.bot.run
       rescue StandardError => e
-        Rails.logger.error("Discord Bot: There was a problem: #{e}")
+        Rails.logger.error(
+          "Discord Bot: [database=#{db}] Gateway runtime failed: #{e.class}: #{e.message}",
+        )
       ensure
+        unless runtime.stopping
+          Rails.logger.warn("Discord Bot: [database=#{db}] Gateway runtime exited unexpectedly")
+        end
         registry_mutex.synchronize { runtimes.delete(db) if runtimes[db].equal?(runtime) }
       end
 
       def stop_runtime(runtime, graceful: true)
         return if runtime.nil?
+
+        runtime.stopping = true
+        action = graceful ? "Stopping gateway runtime" : "Force stopping gateway runtime"
+        ::DiscordBot::LifecycleLogger.verbose(action, db: runtime.db)
 
         if graceful
           clean_shutdown = true
@@ -180,20 +190,28 @@ module ::DiscordBot
             ::DiscordBot::Bot.stop(runtime.bot)
           rescue StandardError => e
             clean_shutdown = false
-            Rails.logger.error("Discord Bot: There was a problem stopping the bot: #{e}")
+            Rails.logger.error(
+              "Discord Bot: [database=#{runtime.db}] Gateway shutdown failed: #{e.class}: #{e.message}",
+            )
           end
 
           clean_shutdown &&= wait_for_runtime(runtime, STOP_TIMEOUT)
-          return if clean_shutdown
+          if clean_shutdown
+            ::DiscordBot::LifecycleLogger.verbose("Stopped gateway runtime", db: runtime.db)
+            return
+          end
         end
 
-        Rails.logger.warn("Discord Bot: Forcing remaining gateway and event threads to stop")
+        Rails.logger.warn(
+          "Discord Bot: [database=#{runtime.db}] Forcing remaining gateway and event threads to stop",
+        )
         event_threads = ::DiscordBot::Bot.event_threads(runtime.bot)
         ::DiscordBot::Bot.force_stop(runtime.bot)
         event_threads.concat(::DiscordBot::Bot.event_threads(runtime.bot)).uniq.each(&:kill)
         event_threads.each(&:join)
         runtime.thread.kill if runtime.thread.alive?
         runtime.thread.join
+        ::DiscordBot::LifecycleLogger.verbose("Stopped gateway runtime", db: runtime.db)
       end
 
       def wait_for_runtime(runtime, timeout)
