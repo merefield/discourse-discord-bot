@@ -42,4 +42,23 @@ describe DiscordBot::Lease do
   ensure
     lease&.stop_renewal
   end
+
+  it "notifies ownership loss once when the callback raises" do
+    lease = described_class.new(redis: redis, key: key, token: "owner", refresh_seconds: 0.01)
+    callback_calls = Queue.new
+    original_report_on_exception = Thread.report_on_exception
+    Thread.report_on_exception = false
+    expect(lease.acquire).to eq(true)
+
+    lease.start_renewal do
+      callback_calls << true
+      raise "cleanup failed"
+    end
+    redis.del(key)
+    Timeout.timeout(1) { Thread.pass while lease.renewing? }
+
+    expect(callback_calls.size).to eq(1)
+  ensure
+    Thread.report_on_exception = original_report_on_exception
+  end
 end

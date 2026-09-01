@@ -53,13 +53,16 @@ module ::DiscordBot
         Thread.new do
           loop do
             sleep @refresh_seconds
-            next if renew
+            begin
+              next if renew
+            rescue StandardError => error
+              on_lost.call(error)
+              break
+            end
 
             on_lost.call
             break
           end
-        rescue StandardError => error
-          on_lost.call(error)
         end
     end
 
