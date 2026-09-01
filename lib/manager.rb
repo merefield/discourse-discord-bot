@@ -9,15 +9,16 @@ module ::DiscordBot
 
     class << self
       def activate!
-        lifecycle_mutex.synchronize { @active = true }
+        ownership_mutex.synchronize do
+          @active = true
+          @ownership_generation = (@ownership_generation || 0) + 1
+        end
         reconcile!
       end
 
       def deactivate!(graceful: true)
-        lifecycle_mutex.synchronize do
-          @active = false
-          stop_all_without_lock(graceful: graceful)
-        end
+        invalidate_ownership!
+        lifecycle_mutex.synchronize { stop_all_without_lock(graceful: graceful) }
       end
 
       def bot_for(db)
@@ -49,14 +50,17 @@ module ::DiscordBot
       end
 
       def restart(db)
-        return unless active?
+        generation = active_generation
+        return if generation.nil?
 
         RailsMultisite::ConnectionManagement.with_connection(db) do
           lifecycle_mutex.synchronize do
-            return unless @active
+            return unless active_generation?(generation)
 
             stop_runtime(delete_runtime(db))
-            start_runtime(db) if should_start?
+            return unless active_generation?(generation)
+
+            start_runtime(db, generation) if should_start?
           end
         end
       end
@@ -68,7 +72,26 @@ module ::DiscordBot
       private
 
       def active?
-        lifecycle_mutex.synchronize { @active }
+        active_generation.present?
+      end
+
+      def active_generation
+        ownership_mutex.synchronize { @ownership_generation if @active }
+      end
+
+      def active_generation?(generation)
+        ownership_mutex.synchronize { active_generation_without_lock?(generation) }
+      end
+
+      def active_generation_without_lock?(generation)
+        @active && @ownership_generation == generation
+      end
+
+      def invalidate_ownership!
+        ownership_mutex.synchronize do
+          @active = false
+          @ownership_generation = (@ownership_generation || 0) + 1
+        end
       end
 
       def stop_all_without_lock(graceful:)
@@ -88,6 +111,10 @@ module ::DiscordBot
 
       def lifecycle_mutex
         @lifecycle_mutex ||= Mutex.new
+      end
+
+      def ownership_mutex
+        @ownership_mutex ||= Mutex.new
       end
 
       def registry_mutex
@@ -112,23 +139,27 @@ module ::DiscordBot
         ]
       end
 
-      def start_runtime(db)
+      def start_runtime(db, generation)
         configuration = desired_configuration
         return if configuration.nil?
 
         bot = ::DiscordBot::Bot.init
         runtime = Runtime.new(bot: bot, configuration: configuration)
         registered = Queue.new
-        thread =
-          Thread.new do
-            registered.pop
-            run_bot(db, runtime)
-          end
-        runtime.thread = thread
+        ownership_mutex.synchronize do
+          return unless active_generation_without_lock?(generation)
 
-        registry_mutex.synchronize { runtimes[db] = runtime }
-        registered << true
-        runtime
+          thread =
+            Thread.new do
+              registered.pop
+              run_bot(db, runtime)
+            end
+          runtime.thread = thread
+
+          registry_mutex.synchronize { runtimes[db] = runtime }
+          registered << true
+          runtime
+        end
       end
 
       def run_bot(db, runtime)

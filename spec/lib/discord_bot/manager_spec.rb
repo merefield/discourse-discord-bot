@@ -84,6 +84,44 @@ describe DiscordBot::Manager do
     restart_thread&.join
   end
 
+  it "does not replace a runtime after ownership is revoked during shutdown" do
+    worker_started = Queue.new
+    stop_started = Queue.new
+    allow_stop = Queue.new
+    worker_stopped = Queue.new
+    first_bot = Object.new
+    first_bot.define_singleton_method(:run) do
+      worker_started << true
+      worker_stopped.pop
+    end
+    first_bot.define_singleton_method(:stop) do
+      stop_started << true
+      allow_stop.pop
+      worker_stopped << true
+    end
+    first_bot.define_singleton_method(:event_threads) { [] }
+    second_bot = bots.second
+    DiscordBot::Bot.stubs(:init).returns(first_bot, second_bot)
+
+    described_class.restart(db)
+    Timeout.timeout(1) { worker_started.pop }
+    restart_thread = Thread.new { described_class.restart(db) }
+    Timeout.timeout(1) { stop_started.pop }
+    deactivation_thread = Thread.new { described_class.deactivate!(graceful: false) }
+    Timeout.timeout(1) { Thread.pass until deactivation_thread.status == "sleep" }
+    allow_stop << true
+
+    expect(Timeout.timeout(1) { restart_thread.value }).to be_nil
+    Timeout.timeout(1) { deactivation_thread.join }
+    expect(described_class.bot_for(db)).to be_nil
+  ensure
+    allow_stop << true if allow_stop&.empty?
+    restart_thread&.kill
+    restart_thread&.join
+    deactivation_thread&.kill
+    deactivation_thread&.join
+  end
+
   it "keeps a runtime for each multisite database" do
     DiscordBot::Bot.stubs(:init).returns(*bots)
 
