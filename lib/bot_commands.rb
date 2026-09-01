@@ -2,11 +2,63 @@
 module ::DiscordBot::BotCommands
   HISTORY_CHUNK_LIMIT = 100
 
-  THREAD_TYPES = [
-    Discordrb::Channel::TYPES[:news_thread],
-    Discordrb::Channel::TYPES[:public_thread],
-    Discordrb::Channel::TYPES[:private_thread],
-  ].freeze
+  def self.thread_types
+    @thread_types ||=
+      %i[news_thread public_thread private_thread].map do |type|
+        Discordrb::Channel::TYPES.fetch(type)
+      end
+  end
+
+  def self.fetch_history(channel, before_id, count)
+    messages = []
+
+    while messages.length < count
+      batch_size = [count - messages.length, HISTORY_CHUNK_LIMIT].min
+      batch = channel.history(batch_size, before_id)
+      break if batch.empty?
+
+      messages.concat(batch)
+      break if batch.length < batch_size
+
+      before_id = batch.last.id
+    end
+
+    messages
+  end
+
+  def self.default_history_count
+    [HISTORY_CHUNK_LIMIT, SiteSetting.discord_bot_message_copy_max_messages].min
+  end
+
+  def self.discord_users_below_trust_level(min_trust_level)
+    UserAssociatedAccount
+      .joins(:user)
+      .where(provider_name: "discord")
+      .where("users.trust_level < ?", min_trust_level)
+      .pluck(:provider_uid)
+  end
+
+  def self.group_sync_data(max_group_visibility, include_automated_groups:)
+    groups = Group.where("visibility_level <= ?", max_group_visibility)
+    groups = groups.where(automatic: false) unless include_automated_groups
+
+    memberships =
+      UserAssociatedAccount
+        .joins(user: :groups)
+        .merge(groups)
+        .where(provider_name: "discord")
+        .pluck("users.username", :provider_uid, "groups.id", "groups.name")
+        .map do |username, provider_uid, group_id, group_name|
+          {
+            discourse_username: username,
+            discord_uid: provider_uid,
+            discourse_group_id: group_id,
+            discourse_group_name: group_name,
+          }
+        end
+
+    [groups.count, memberships]
+  end
 
   def self.manage_discord_commands(bot)
     bot.bucket :admin_tasks, limit: 3, time_span: 60, delay: 10
@@ -22,48 +74,39 @@ module ::DiscordBot::BotCommands
       required_roles: [SiteSetting.discord_bot_admin_role_id],
       description: I18n.t("discord_bot.commands.disccopy.description"),
     ) do |event, number_of_past_messages, target_category, target_topic|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
-        past_messages = []
+      ::DiscordBot::Manager.with_bot_connection(event.bot) do
+        thread_channel = thread_types.include?(event.channel.type)
+        requested_message_count = Integer(number_of_past_messages, exception: false)
 
-        if !THREAD_TYPES.include?(event.channel.type)
-          if !(number_of_past_messages.to_i > 0)
+        if number_of_past_messages.blank?
+          if !thread_channel
             event.respond I18n.t("discord_bot.commands.disccopy.error.must_specify_message_number")
             break
           end
-        else
-          if number_of_past_messages.present? && !(number_of_past_messages.to_i > 0)
-            event.respond I18n.t(
-                            "discord_bot.commands.disccopy.error.must_specify_message_number_as_integer",
-                          )
-            break
-          end
+          requested_message_count = default_history_count
+        elsif requested_message_count.nil? || requested_message_count <= 0
+          error_key =
+            if thread_channel
+              "discord_bot.commands.disccopy.error.must_specify_message_number_as_integer"
+            else
+              "discord_bot.commands.disccopy.error.must_specify_message_number"
+            end
+          event.respond I18n.t(error_key)
+          break
         end
 
-        number_of_past_messages = number_of_past_messages || HISTORY_CHUNK_LIMIT
-        if number_of_past_messages.to_i <= HISTORY_CHUNK_LIMIT
-          past_messages = event.channel.history(number_of_past_messages.to_i, event.message.id)
-        else
-          number_of_messages_retrieved = 0
-          last_id = event.message.id
-          while number_of_messages_retrieved < number_of_past_messages.to_i
-            retrieve_this_time =
-              (
-                if number_of_past_messages.to_i - number_of_messages_retrieved > HISTORY_CHUNK_LIMIT
-                  HISTORY_CHUNK_LIMIT
-                else
-                  number_of_past_messages.to_i - number_of_messages_retrieved
-                end
-              )
-            past_messages = event.channel.history(retrieve_this_time, last_id)
-            last_id = past_messages.last.id.to_i
-            number_of_messages_retrieved += retrieve_this_time
-          end
+        if requested_message_count > SiteSetting.discord_bot_message_copy_max_messages
+          event.respond I18n.t(
+                          "discord_bot.commands.disccopy.error.message_number_exceeds_limit",
+                          limit: SiteSetting.discord_bot_message_copy_max_messages,
+                        )
+          break
         end
+
+        past_messages = fetch_history(event.channel, event.message.id, requested_message_count)
 
         # if beginning of thread, strip the first message and replace it with its parent message that kicked off the thread (ugh!)
-        if past_messages.last.content.blank? && THREAD_TYPES.include?(event.channel.type)
+        if past_messages.any? && past_messages.last.content.blank? && thread_channel
           past_messages =
             past_messages[0..past_messages.length - 2] << event
               .bot
@@ -106,13 +149,11 @@ module ::DiscordBot::BotCommands
                           )
           end
         end
-        system_user =
-          User.find_by(username: SiteSetting.discord_bot_unknown_user_proxy_account) ||
-            User.find_by(id: -1)
-
         total_copied_messages = 0
         current_topic_id = nil
         bot_user_id = Base64.decode64(bot.token.split(" ")[1].split(".")[0]).to_i
+        prepared_posts =
+          past_messages.compact.zip(::DiscordBot::Utils.prepare_posts(past_messages.compact)).to_h
 
         past_messages
           .reverse
@@ -125,7 +166,7 @@ module ::DiscordBot::BotCommands
                 next
               end
 
-              posting_user, raw = ::DiscordBot::Utils.prepare_post(pm)
+              posting_user, raw = prepared_posts.fetch(pm)
 
               if topic_index == 0 && destination_topic.nil?
                 raw =
@@ -137,7 +178,7 @@ module ::DiscordBot::BotCommands
                       )
                   )
                 # because of structure of Discord if we are copying thread we want the link on second message, ugh!
-                if THREAD_TYPES.include?(event.channel.type) && message_batch.length > 1
+                if thread_types.include?(event.channel.type) && message_batch.length > 1
                   link_to_discord = message_batch[1].link
                 else
                   link_to_discord = pm.link
@@ -211,45 +252,26 @@ module ::DiscordBot::BotCommands
       required_roles: [SiteSetting.discord_bot_admin_role_id],
       description: I18n.t("discord_bot.commands.disckick.description"),
     ) do |event, min_trust_level|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
-
+      ::DiscordBot::Manager.with_bot_connection(event.bot) do
         min_trust_level = 3 if !min_trust_level
-
-        discordusers = []
 
         event.respond "Discourse Kick:  Starting.  Minimum Trust Level = #{min_trust_level}"
         event.respond "Discourse Kick:  Starting.  Please be patient, I'm rate limited to respect Discord services."
         event.respond "Discourse Kick:  Preparing list of users who also have a registered account on Discord ..."
 
-        builder = DB.build("select * from user_associated_accounts /*where*/")
-        builder.where("provider_name = :provider_name", provider_name: "discord")
-        builder.query.each do |t|
-          discordusers << { discord_user_id: t.user_id, provider_uid: t.provider_uid }
-        end
-
         event.respond "Discourse Kick:  Determining user trust levels ..."
-
-        discordusers.each do |user|
-          trustuser = User.find_by(id: user[:discord_user_id])
-          user[:trust_level] = trustuser[:trust_level]
-        end
-
         event.respond "Discourse Kick:  Compiling list of untrusted users ..."
 
-        untrusted_users =
-          discordusers.select { |user| user[:trust_level].to_i < min_trust_level.to_i }
+        untrusted_user_ids = discord_users_below_trust_level(min_trust_level.to_i)
 
         bot_profile = bot.profile.on(event.server)
         can_do_the_magic_dance = bot_profile.permission?(:kick_members)
 
         if can_do_the_magic_dance == true
-          ut_count = untrusted_users.count
+          ut_count = untrusted_user_ids.count
 
           if ut_count > 0
-            untrusted_users.each_with_index do |user, index|
-              user_id = user[:provider_uid]
+            untrusted_user_ids.each_with_index do |user_id, index|
               event.server.kick(
                 user_id.to_s,
                 "Kicked for not having sufficient trust level on the linked Discourse site",
@@ -284,72 +306,35 @@ module ::DiscordBot::BotCommands
       required_roles: [SiteSetting.discord_bot_admin_role_id],
       description: "Block users whose trust level is below a certain integer on discourse",
     ) do |event, clean_house, max_group_visibility, include_automated_groups|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
-
+      ::DiscordBot::Manager.with_bot_connection(event.bot) do
         clean_house = false if !clean_house
         max_group_visibility = 0 if !max_group_visibility
-
-        discord_users = []
-        eligible_discourse_groups = []
-        discourse_groups = []
-        discord_roles = []
-        ug_list = []
 
         event.respond "Discourse Sync:  Starting.  Please be patient, I'm rate limited to respect Discord services."
         event.respond "Discourse Sync:  Checking if there are any eligible groups for sync ..."
 
-        eligiblegroupbuilder = DB.build("select id from groups /*where*/")
-        eligiblegroupbuilder.where(
-          "visibility_level <= :visibility",
-          visibility: max_group_visibility.to_i,
-        )
-        unless include_automated_groups.to_s.downcase == "true"
-          eligiblegroupbuilder.where("automatic = false")
-        end
+        eligible_group_count, user_group_memberships =
+          group_sync_data(
+            max_group_visibility.to_i,
+            include_automated_groups: include_automated_groups.to_s.downcase == "true",
+          )
 
-        event.respond "Discourse Sync: #{eligiblegroupbuilder.query.count} eligible group(s) were found"
+        event.respond "Discourse Sync: #{eligible_group_count} eligible group(s) were found"
 
-        if eligiblegroupbuilder.query.count == 0
+        if eligible_group_count == 0
           event.respond "Discourse Sync:  No eligible groups for sync using provided or default criteria!"
         else
-          eligiblegroupbuilder.query.each { |g| eligible_discourse_groups << g.id }
+          event.respond "Discourse Sync:  Preparing linked Discord users and their Discourse groups ..."
 
-          event.respond "Discourse Sync:  Preparing list of users who also have a registered account on Discord ..."
-
-          builder = DB.build("select * from user_associated_accounts /*where*/")
-          builder.where("provider_name = :provider_name", provider_name: "discord")
-          builder.query.each do |t|
-            discord_users << { discourse_user_id: t.user_id, discord_uid: t.provider_uid }
-          end
-
-          event.respond "Discourse Sync:  Preparing list of groups that users who have a registered account on Discord belong to on Discourse ..."
-
-          discord_users.each do |user|
-            groupbuilder = DB.build("select group_id from group_users /*where*/")
-            groupbuilder.where("user_id = :user_id", user_id: user[:discourse_user_id])
-            groupbuilder.query.each do |g|
-              if eligible_discourse_groups.include? g.group_id
-                discourse_groups |= [discourse_group_id: g.group_id]
-                ug_entry = {
-                  discourse_user_id: user[:discourse_user_id],
-                  discord_uid: user[:discord_uid],
-                  discourse_group_id: g.group_id,
+          discourse_groups =
+            user_group_memberships
+              .map do |membership|
+                {
+                  discourse_group_id: membership[:discourse_group_id],
+                  discourse_name: membership[:discourse_group_name],
                 }
-                ug_list << ug_entry
               end
-            end
-            userbuilder = DB.build("select username from users /*where*/ limit 1")
-            userbuilder.where("id = :user_id", user_id: user[:discourse_user_id])
-            userbuilder.query.each do |un|
-              ug_list.each do |ug|
-                if ug[:discourse_user_id] == user[:discourse_user_id]
-                  ug[:discourse_username] = un.username
-                end
-              end
-            end
-          end
+              .uniq
 
           event.respond "Discourse Sync: #{discourse_groups.length} eligible group(s) were found with Discord users"
 
@@ -358,59 +343,48 @@ module ::DiscordBot::BotCommands
           else
             event.respond "Discourse Sync:  Retrieving list of roles from Discord server ..."
 
-            event.server.roles.each { |r| discord_roles << { name: r.name, id: r.id } }
-
-            discourse_groups.each do |g|
-              builder = DB.build("select name from groups /*where*/ limit 1")
-              builder.where("id = :group_id", group_id: g[:discourse_group_id])
-              builder.query.each { |n| g[:discourse_name] = n.name }
-            end
+            discord_roles = event.server.roles.index_by(&:name)
 
             if clean_house.to_s.downcase == "true"
               event.respond "Discourse Sync:  Deleting existing mapping roles ..."
 
               discourse_groups_count = discourse_groups.count
 
-              discourse_groups.each_with_index do |g, index|
+              discourse_groups.each_with_index do |group, index|
                 event.respond "Discourse Sync:  [#{index + 1}/#{discourse_groups_count}] Attempting to delete Role"
 
-                if !discord_roles.detect { |r| r[:name] == g[:discourse_name] }.nil?
-                  role_id = discord_roles.detect { |r| r[:name] == g[:discourse_name] }[:id]
-                else
-                  role_id = nil
-                end
+                role = discord_roles[group[:discourse_name]]
+                next if role.nil?
 
-                unless role_id.nil?
-                  begin
-                    event.server.role(role_id).delete("Discourse Sync Cleanup")
-                    event.respond "Discourse Sync:  Role '#{g[:discourse_name]}' deleted as part of cleanup"
-                    sleep(SiteSetting.discord_bot_rate_limit_delay)
-                  rescue => e
-                    event.respond "Discourse Sync:  I dont appear to have rights to do this though!"
-                    bot.send_message(
-                      SiteSetting.discord_bot_admin_channel_id,
-                      "ERROR on server #{event.server.name} (ID: #{event.server.id}) for command `^role deletion`, `#{e}`",
-                    )
-                  end
+                begin
+                  role.delete("Discourse Sync Cleanup")
+                  event.respond "Discourse Sync:  Role '#{group[:discourse_name]}' deleted as part of cleanup"
+                  sleep(SiteSetting.discord_bot_rate_limit_delay)
+                rescue => e
+                  event.respond "Discourse Sync:  I dont appear to have rights to do this though!"
+                  bot.send_message(
+                    SiteSetting.discord_bot_admin_channel_id,
+                    "ERROR on server #{event.server.name} (ID: #{event.server.id}) for command `^role deletion`, `#{e}`",
+                  )
                 end
               end
             end
 
             event.respond "Discourse Sync:  Creating missing Roles on Discord server ..."
 
-            discord_roles = []
-
-            event.server.roles.each { |r| discord_roles << { name: r.name, id: r.id } }
-
+            discord_roles = event.server.roles.index_by(&:name)
             discourse_groups_count = discourse_groups.count
 
-            discourse_groups.each_with_index do |g, index|
-              event.respond "Discourse Sync:  [#{index + 1}/#{discourse_groups_count}] Attempting to create Role for #{g[:discourse_name]}"
+            discourse_groups.each_with_index do |group, index|
+              group_name = group[:discourse_name]
+              event.respond "Discourse Sync:  [#{index + 1}/#{discourse_groups_count}] Attempting to create Role for #{group_name}"
 
-              if !discord_roles.any? { |hash| hash[:name] == g[:discourse_name] }
+              if discord_roles.key?(group_name)
+                event.respond "Discourse Sync:  Role '#{group_name}' already exists!"
+              else
                 begin
-                  event.server.create_role(name: g[:discourse_name])
-                  event.respond "Discourse Sync:  Role '#{g[:discourse_name]}' created!"
+                  event.server.create_role(name: group_name)
+                  event.respond "Discourse Sync:  Role '#{group_name}' created!"
                 rescue => e
                   event.respond "Discourse Sync:  I dont appear to have rights to create Roles!"
                   bot.send_message(
@@ -418,36 +392,21 @@ module ::DiscordBot::BotCommands
                     "ERROR on server #{event.server.name} (ID: #{event.server.id}) for command `^role create`, `#{e}`",
                   )
                 end
-              else
-                event.respond "Discourse Sync:  Role '#{g[:discourse_name]}' already exists!"
               end
 
               sleep(SiteSetting.discord_bot_rate_limit_delay)
             end
 
-            discord_roles = []
-
-            event.server.roles.each { |r| discord_roles << { name: r.name, id: r.id } }
-
-            event.respond "Discourse Sync:  Building user role mapping ..."
-
-            ug_list.each do |ug|
-              entrybuilder = DB.build("select name from groups /*where*/ limit 1")
-              entrybuilder.where("id = :group_id", group_id: ug[:discourse_group_id])
-
-              entrybuilder.query.each { |n| ug[:discourse_group_name] = n.name }
-
-              discord_roles.each do |dr|
-                ug[:discord_group_id] = dr[:id] if dr[:name] == ug[:discourse_group_name]
-              end
-            end
+            discord_roles = event.server.roles.index_by(&:name)
 
             event.respond "Discourse Sync:  Adding users to roles ..."
 
-            ug_count = ug_list.count
-            ug_list.each_with_index do |ug, index|
-              event.respond "Discourse Sync:  [#{index + 1}/#{ug_count}] Adding member '#{ug[:discourse_username]}' to '#{ug[:discourse_group_name]}'"
-              event.server.member(ug[:discord_uid]).add_role(ug[:discord_group_id])
+            membership_count = user_group_memberships.count
+            user_group_memberships.each_with_index do |membership, index|
+              group_name = membership[:discourse_group_name]
+              role = discord_roles[group_name]
+              event.respond "Discourse Sync:  [#{index + 1}/#{membership_count}] Adding member '#{membership[:discourse_username]}' to '#{group_name}'"
+              event.server.member(membership[:discord_uid]).add_role(role&.id)
               sleep(SiteSetting.discord_bot_rate_limit_delay)
             rescue => e
               event.respond "Discourse Sync:  I dont appear to have rights to do this though!"
@@ -464,11 +423,7 @@ module ::DiscordBot::BotCommands
     end
 
     bot.message(with_text: "Ping!") do |event|
-      token = event.bot.token.split(" ")[1]
-      RailsMultisite::ConnectionManagement.each_connection do
-        next if token != SiteSetting.discord_bot_token
-        event.respond "Pong!"
-      end
+      ::DiscordBot::Manager.with_bot_connection(event.bot) { event.respond "Pong!" }
     end
   end
 end

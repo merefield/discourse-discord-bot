@@ -1,6 +1,7 @@
 en:
   site_settings:
     discord_bot_enabled: "Enable the Discourse Discord bot plugin"
+    discord_bot_verbose_logging: "Log detailed Discord gateway lifecycle diagnostics at WARN level so they appear in production logs. Keep this disabled during normal operation."
     discord_bot_token: "Enter your bot TOKEN from Discord here"
     discord_bot_admin_channel_id: "The id of your admin text channel on Discord"
     discord_bot_admin_role_id: "The id of your admin role on Discord for which commands are permitted"
@@ -8,6 +9,7 @@ en:
     discord_bot_discourse_announcement_topic_id: "The id of your Discourse Announcement Topic (if discord auto channel sync is enabled and matching Category found this is suppressed)"
     discord_bot_auto_channel_sync: "Enable chat sync on identically named channels/Categories (takes precedence over Discourse Announcement Topic)"
     discord_bot_message_copy_topic_size_limit: "Message history copy: number of Discord messages per Discourse Topic"
+    discord_bot_message_copy_max_messages: "Message history copy: maximum number of Discord messages allowed per command"
     discord_bot_message_copy_default_category: "If no Category specified and Channel name doesn't match a Discourse Category use this Category to paste Topics"
     discord_bot_message_copy_convert_discord_mentions_to_usernames: "Convert mentions within Discord messages to Discourse or Discord usernames"
     discord_bot_message_copy_ignore_bot_messages: "Ignore messages by bot and do not copy over"
@@ -43,6 +45,7 @@ en:
           general_error: "ERROR: occurred, aborting command!: %{error}"
           must_specify_message_number: "ERROR: Outside of a Thread you must specify number of messages to be copied!"
           must_specify_message_number_as_integer: "ERROR: Number of messages must be an integer!"
+          message_number_exceeds_limit: "ERROR: Number of messages cannot exceed %{limit}!"
           unable_to_find_discourse_category: "ERROR: Unable to find matching Discourse Category, aborting command!  Be sure to substitute _ for spaces in name and match case."
           unable_to_find_discourse_topic: "ERROR: Unable to find matching Discourse Topic in target Category, will create new!"
           unable_to_determine_topic_id: "ERROR: Unable to determine a suitable Topic Id for Discourse!"

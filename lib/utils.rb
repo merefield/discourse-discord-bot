@@ -5,7 +5,19 @@ module ::DiscordBot::Utils
 
   module_function
 
-  def prepare_post(pm)
+  def prepare_posts(messages)
+    discord_users = discord_users_by_id(discord_user_ids(messages))
+    fallback_user = proxy_account unless messages.all? { |message|
+      discord_users.key?(message.author.id.to_s)
+    }
+
+    messages.map do |message|
+      prepare_post(message, discord_users: discord_users, fallback_user: fallback_user)
+    end
+  end
+
+  def prepare_post(pm, discord_users: nil, fallback_user: nil)
+    discord_users ||= discord_users_by_id(discord_user_ids([pm]))
     raw = pm.to_s
     embed = pm.embeds[0]
 
@@ -15,7 +27,7 @@ module ::DiscordBot::Utils
       raw = format_youtube_links(raw)
       #mentions
       if SiteSetting.discord_bot_message_copy_convert_discord_mentions_to_usernames
-        raw = convert_mentions(raw)
+        raw = convert_mentions(raw, discord_users: discord_users)
       end
     elsif embed.present?
       url = embed.url
@@ -49,15 +61,7 @@ module ::DiscordBot::Utils
     end
 
     # associated author
-    associated_user =
-      UserAssociatedAccount.find_by(provider_uid: pm.author.id, provider_name: "discord")
-    proxy_account = User.find_by(name: SiteSetting.discord_bot_unknown_user_proxy_account)
-
-    if associated_user.nil?
-      posting_user = proxy_account.nil? ? system_user : proxy_account
-    else
-      posting_user = User.find_by(id: associated_user.user_id)
-    end
+    posting_user = discord_users[pm.author.id.to_s] || fallback_user || proxy_account
 
     [posting_user, raw]
   end
@@ -96,15 +100,33 @@ module ::DiscordBot::Utils
     end
   end
 
-  def convert_mentions(text)
+  def convert_mentions(text, discord_users: nil)
+    discord_users ||= discord_users_by_id(text.scan(/<@!?(\d+)>/).flatten)
+
     text.gsub(/<@!?(\d+)>/) do |mention|
       provider_uid = Regexp.last_match(1)
-      associated_user =
-        UserAssociatedAccount.find_by(provider_uid: provider_uid, provider_name: "discord")
-      mentioned_user = User.find_by(id: associated_user&.user_id)
+      mentioned_user = discord_users[provider_uid]
 
       mentioned_user ? "@#{mentioned_user.username}" : mention
     end
+  end
+
+  def discord_user_ids(messages)
+    messages
+      .flat_map { |message| [message.author.id.to_s, *message.to_s.scan(/<@!?(\d+)>/).flatten] }
+      .uniq
+  end
+
+  def discord_users_by_id(provider_uids)
+    UserAssociatedAccount
+      .where(provider_name: "discord", provider_uid: provider_uids)
+      .preload(:user)
+      .to_h { |account| [account.provider_uid, account.user] }
+  end
+
+  def proxy_account
+    User.find_by(username: SiteSetting.discord_bot_unknown_user_proxy_account) ||
+      Discourse.system_user
   end
 
   def format_youtube_links(text)
