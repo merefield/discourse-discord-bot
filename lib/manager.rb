@@ -143,16 +143,18 @@ module ::DiscordBot
       def stop_runtime(runtime, graceful: true)
         return if runtime.nil?
 
-        clean_shutdown = true
-        begin
-          ::DiscordBot::Bot.stop(runtime.bot)
-        rescue StandardError => e
-          clean_shutdown = false
-          Rails.logger.error("Discord Bot: There was a problem stopping the bot: #{e}")
-        end
+        if graceful
+          clean_shutdown = true
+          begin
+            ::DiscordBot::Bot.stop(runtime.bot)
+          rescue StandardError => e
+            clean_shutdown = false
+            Rails.logger.error("Discord Bot: There was a problem stopping the bot: #{e}")
+          end
 
-        clean_shutdown &&= wait_for_runtime(runtime, graceful ? STOP_TIMEOUT : 0)
-        return if clean_shutdown
+          clean_shutdown &&= wait_for_runtime(runtime, STOP_TIMEOUT)
+          return if clean_shutdown
+        end
 
         Rails.logger.warn("Discord Bot: Forcing remaining gateway and event threads to stop")
         event_threads = ::DiscordBot::Bot.event_threads(runtime.bot)

@@ -185,4 +185,35 @@ describe DiscordBot::Manager do
       thread.join
     end
   end
+
+  it "bypasses a blocking graceful shutdown when force stopping" do
+    worker_started = Queue.new
+    allow_graceful_stop = Queue.new
+    deactivation_finished = Queue.new
+    blocking_bot = Object.new
+    blocking_bot.define_singleton_method(:run) do
+      worker_started << Thread.current
+      sleep
+    end
+    blocking_bot.define_singleton_method(:stop) { allow_graceful_stop.pop }
+    blocking_bot.define_singleton_method(:event_threads) { [] }
+    DiscordBot::Bot.stubs(:init).returns(blocking_bot)
+
+    described_class.restart(db)
+    worker_thread = Timeout.timeout(1) { worker_started.pop }
+    deactivation_thread =
+      Thread.new do
+        described_class.deactivate!(graceful: false)
+        deactivation_finished << true
+      end
+
+    expect(Timeout.timeout(1) { deactivation_finished.pop }).to eq(true)
+    expect(worker_thread).not_to be_alive
+  ensure
+    allow_graceful_stop << true if allow_graceful_stop&.empty?
+    deactivation_thread&.kill
+    deactivation_thread&.join
+    worker_thread&.kill
+    worker_thread&.join
+  end
 end
