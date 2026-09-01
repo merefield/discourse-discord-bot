@@ -23,13 +23,13 @@ module ::DiscordBot
       LUA
 
     def initialize(
-      redis: Discourse.redis.without_namespace,
+      redis: Discourse.redis,
       key: KEY,
       token: SecureRandom.hex(16),
       refresh_seconds: REFRESH_SECONDS
     )
-      @redis = redis
-      @key = key
+      @redis = redis.respond_to?(:without_namespace) ? redis.without_namespace : redis
+      @key = redis.respond_to?(:namespace_key) ? redis.namespace_key(key) : key
       @token = token
       @refresh_seconds = refresh_seconds
     end

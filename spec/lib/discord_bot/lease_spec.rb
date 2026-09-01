@@ -6,7 +6,17 @@ describe DiscordBot::Lease do
   let(:owner) { described_class.new(redis: redis, key: key, token: "owner") }
   let(:contender) { described_class.new(redis: redis, key: key, token: "contender") }
 
-  after { redis.del(key) }
+  after { redis.del(key, Discourse.redis.namespace_key(key)) }
+
+  it "keeps the default lease inside the deployment namespace" do
+    lease = described_class.new(key: key, token: "owner")
+    namespaced_key = Discourse.redis.namespace_key(key)
+
+    expect(lease.acquire).to eq(true)
+    expect(lease.renew).to eq(true)
+    expect(redis.mget(key, namespaced_key)).to eq([nil, "owner"])
+    expect(lease.release).to eq(true)
+  end
 
   it "allows only the owner to renew and release the lease" do
     expect(owner.acquire).to eq(true)
