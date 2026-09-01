@@ -105,6 +105,11 @@ module ::DiscordBot::BotCommands
 
         past_messages = fetch_history(event.channel, event.message.id, requested_message_count)
 
+        if past_messages.empty?
+          event.respond I18n.t("discord_bot.commands.disccopy.error.no_messages_found")
+          break
+        end
+
         # if beginning of thread, strip the first message and replace it with its parent message that kicked off the thread (ugh!)
         if past_messages.any? && past_messages.last.content.blank? && thread_channel
           past_messages =

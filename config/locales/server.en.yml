@@ -46,6 +46,7 @@ en:
           must_specify_message_number: "ERROR: Outside of a Thread you must specify number of messages to be copied!"
           must_specify_message_number_as_integer: "ERROR: Number of messages must be an integer!"
           message_number_exceeds_limit: "ERROR: Number of messages cannot exceed %{limit}!"
+          no_messages_found: "ERROR: No Discord message history was found to copy!"
           unable_to_find_discourse_category: "ERROR: Unable to find matching Discourse Category, aborting command!  Be sure to substitute _ for spaces in name and match case."
           unable_to_find_discourse_topic: "ERROR: Unable to find matching Discourse Topic in target Category, will create new!"
           unable_to_determine_topic_id: "ERROR: Unable to determine a suitable Topic Id for Discourse!"

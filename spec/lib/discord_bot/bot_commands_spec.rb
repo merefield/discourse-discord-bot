@@ -1,6 +1,44 @@
 # frozen_string_literal: true
 
 describe DiscordBot::BotCommands do
+  describe ".manage_discord_commands" do
+    before { DiscordBot::DiscordrbLoader.load }
+
+    it "reports an error without a success link when no history is available" do
+      channel = stub(type: Discordrb::Channel::TYPES.fetch(:text))
+      channel.expects(:history).with(10, 123).returns([])
+      message = stub(id: 123, channel: stub(name: "general"))
+      event = stub(bot: Object.new, channel: channel, message: message)
+      event
+        .expects(:respond)
+        .once
+        .with(I18n.t("discord_bot.commands.disccopy.error.no_messages_found"))
+
+      command_bot =
+        Class
+          .new do
+            def initialize(event)
+              @event = event
+            end
+
+            def bucket(*)
+            end
+
+            def command(name, **)
+              yield(@event, "10", nil, nil) if name == :disccopy
+            end
+
+            def message(**)
+            end
+          end
+          .new(event)
+
+      DiscordBot::Manager.stubs(:with_bot_connection).yields
+
+      described_class.manage_discord_commands(command_bot)
+    end
+  end
+
   describe ".discord_users_below_trust_level" do
     fab!(:low_trust_user) { Fabricate(:user, trust_level: 1) }
     fab!(:trusted_user) { Fabricate(:user, trust_level: 3) }
