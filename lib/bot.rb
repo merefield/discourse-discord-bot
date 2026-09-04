@@ -3,6 +3,7 @@
 module ::DiscordBot
   # Builds configured Discord bot instances.
   class Bot
+    COMMAND_PREFIX = "!"
     INTENT_NAMES = %i[servers server_members server_messages].freeze
     MESSAGE_CONTENT_INTENT = 1 << 15
 
@@ -12,7 +13,7 @@ module ::DiscordBot
         bot =
           Discordrb::Commands::CommandBot.new(
             token: SiteSetting.discord_bot_token,
-            prefix: "!",
+            prefix: COMMAND_PREFIX,
             intents: gateway_intents,
           )
         register_ready_event(bot)
