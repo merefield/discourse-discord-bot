@@ -5,7 +5,7 @@ describe DiscordBot::DiscordEventsHandlers::TransmitAnnouncement do
   fab!(:topic)
 
   let(:channel) { stub(id: 456, name: "discord") }
-  let(:message) { stub(channel: channel, content: "From Discord") }
+  let(:message) { stub(channel: channel, content: "From Discord", from_bot?: false) }
   let(:bot) { stub }
   let(:event) { stub(message: message, bot: bot) }
 
@@ -35,8 +35,17 @@ describe DiscordBot::DiscordEventsHandlers::TransmitAnnouncement do
   end
 
   it "skips command messages" do
-    command = stub(channel: channel, content: "!disccopy 10")
+    command = stub(channel: channel, content: "!disccopy 10", from_bot?: false)
     event = stub(message: command, bot: bot)
+    channel.stubs(:id).returns(123)
+    SiteSetting.discord_bot_discourse_announcement_topic_id = topic.id.to_s
+
+    expect { described_class.handle_message(event) }.not_to change(Post, :count)
+  end
+
+  it "skips messages from the current Discord bot" do
+    bot_message = stub(channel: channel, content: "Command response", from_bot?: true)
+    event = stub(message: bot_message, bot: bot)
     channel.stubs(:id).returns(123)
     SiteSetting.discord_bot_discourse_announcement_topic_id = topic.id.to_s
 
