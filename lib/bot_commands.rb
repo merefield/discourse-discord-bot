@@ -230,6 +230,7 @@ module ::DiscordBot::BotCommands
                   )
                 total_copied_messages += 1
                 current_topic_id = new_post.topic.id
+                destination_topic = new_post.topic if automatic_sync_topic_title
               elsif !destination_topic.nil? || !current_topic_id.nil?
                 current_topic_id = destination_topic.id if current_topic_id.nil?
                 new_post =

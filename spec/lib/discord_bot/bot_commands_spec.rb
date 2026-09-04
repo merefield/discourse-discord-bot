@@ -87,6 +87,46 @@ describe DiscordBot::BotCommands do
       expect(topic.posts.order(:post_number).last.raw).to eq("Earlier message")
     end
 
+    it "creates one automatic-sync topic for a multi-batch history copy" do
+      SiteSetting.discord_bot_auto_channel_sync = true
+      SiteSetting.discord_bot_message_copy_topic_size_limit = 1
+      category = Fabricate(:category, name: "discord-backfill")
+      author = stub(id: 456)
+      history_messages =
+        [122, 121].map do |message_id|
+          stub(
+            id: message_id,
+            content: "Message #{message_id}",
+            author: author,
+            embeds: [],
+            attachments: [],
+            link: "https://discord.example/message/#{message_id}",
+            to_s: "Message #{message_id}",
+          )
+        end
+      channel =
+        stub(
+          type: Discordrb::Channel::TYPES.fetch(:text),
+          name: category.name,
+          history: history_messages,
+        )
+      command_message = stub(id: 123, channel: channel)
+      event = stub(bot: Object.new, channel: channel, message: command_message)
+      event.stubs(:respond)
+      DiscordBot::Manager.stubs(:with_bot_connection).yields
+      automatic_topic_title =
+        I18n.t(
+          "discord_bot.discord_events.auto_message_copy.default_topic_title",
+          channel_name: category.name,
+        )
+
+      expect do
+        described_class.manage_discord_commands(build_command_bot(event, ["2", nil, nil]))
+      end.to change { Topic.where(title: automatic_topic_title, category: category).count }.by(1)
+
+      expect(Topic.find_by!(title: automatic_topic_title, category: category).posts.count).to eq(2)
+    end
+
     it "creates a history topic when automatic channel sync is disabled" do
       SiteSetting.discord_bot_auto_channel_sync = false
       category = Fabricate(:category, name: "discord-archive")
