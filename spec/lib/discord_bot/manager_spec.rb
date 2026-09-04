@@ -153,6 +153,17 @@ describe DiscordBot::Manager do
     expect(described_class.bot_for(db)).to eq(bots.second)
   end
 
+  it "keeps the gateway running when its history-copy filtering changes" do
+    DiscordBot::Bot.stubs(:init).returns(bots.first)
+    described_class.restart(db)
+    RailsMultisite::ConnectionManagement.stubs(:each_connection).yields(db)
+
+    SiteSetting.discord_bot_message_copy_ignore_bot_messages = false
+    described_class.reconcile!
+
+    expect(described_class.bot_for(db)).to eq(bots.first)
+  end
+
   it "runs bot callbacks in their owning database" do
     DiscordBot::Bot.stubs(:init).returns(bots.first)
     described_class.restart("first")

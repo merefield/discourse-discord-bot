@@ -12,7 +12,7 @@ describe DiscordBot::Bot do
         DiscordBot::Bot::MESSAGE_CONTENT_INTENT,
     )
     expect(bot.gateway.intents & (1 << 15)).to eq(1 << 15)
-    expect(bot.instance_variable_get(:@ignore_bots)).to eq(true)
+    expect(bot.instance_variable_get(:@ignore_bots)).to be_falsey
   end
 
   it "terminates the gateway heartbeat when stopping" do

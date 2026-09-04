@@ -14,7 +14,6 @@ module ::DiscordBot
             token: SiteSetting.discord_bot_token,
             prefix: "!",
             intents: gateway_intents,
-            ignore_bots: SiteSetting.discord_bot_message_copy_ignore_bot_messages,
           )
         register_ready_event(bot)
 
