@@ -16,7 +16,6 @@ gem "mutex_m", "0.3.0", { require: false }
 gem "websocket-client-simple", "0.9.0", { require: false }
 gem "opus-ruby", "1.0.1", { require: false }
 gem "netrc", "0.11.0", { require: false }
-gem "mime-types-data", "3.2026.0414", require: false
 gem "mime-types", "3.7.0", { require: false }
 gem "domain_name", "0.6.20240107", { require: false }
 gem "http-cookie", "1.0.8", { require: false }
