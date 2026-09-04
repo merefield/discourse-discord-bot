@@ -4,6 +4,30 @@ describe DiscordBot::BotCommands do
   describe ".manage_discord_commands" do
     before { DiscordBot::DiscordrbLoader.load }
 
+    def build_command_bot(event, arguments)
+      Class
+        .new do
+          attr_reader :token
+
+          def initialize(event, arguments)
+            @event = event
+            @arguments = arguments
+            @token = "Bot MTIz.signature"
+          end
+
+          def bucket(*)
+          end
+
+          def command(name, **)
+            yield(@event, *@arguments) if name == :disccopy
+          end
+
+          def message(**)
+          end
+        end
+        .new(event, arguments)
+    end
+
     it "reports an error without a success link when no history is available" do
       channel = stub(type: Discordrb::Channel::TYPES.fetch(:text))
       channel.expects(:history).with(10, 123).returns([])
@@ -14,28 +38,85 @@ describe DiscordBot::BotCommands do
         .once
         .with(I18n.t("discord_bot.commands.disccopy.error.no_messages_found"))
 
-      command_bot =
-        Class
-          .new do
-            def initialize(event)
-              @event = event
-            end
-
-            def bucket(*)
-            end
-
-            def command(name, **)
-              yield(@event, "10", nil, nil) if name == :disccopy
-            end
-
-            def message(**)
-            end
-          end
-          .new(event)
-
       DiscordBot::Manager.stubs(:with_bot_connection).yields
 
-      described_class.manage_discord_commands(command_bot)
+      described_class.manage_discord_commands(build_command_bot(event, ["10", nil, nil]))
+    end
+
+    it "appends an untargeted history copy to the automatic-sync topic" do
+      SiteSetting.discord_bot_auto_channel_sync = true
+      category = Fabricate(:category, name: "discord-history")
+      topic =
+        Fabricate(
+          :topic,
+          category: category,
+          title:
+            I18n.t(
+              "discord_bot.discord_events.auto_message_copy.default_topic_title",
+              channel_name: category.name,
+            ),
+        )
+      author = stub(id: 456)
+      history_message =
+        stub(
+          id: 122,
+          content: "Earlier message",
+          author: author,
+          embeds: [],
+          attachments: [],
+          link: "https://discord.example/message/122",
+          to_s: "Earlier message",
+        )
+      channel =
+        stub(
+          type: Discordrb::Channel::TYPES.fetch(:text),
+          name: category.name,
+          history: [history_message],
+        )
+      command_message = stub(id: 123, channel: channel)
+      event = stub(bot: Object.new, channel: channel, message: command_message)
+      event.stubs(:respond)
+      DiscordBot::Manager.stubs(:with_bot_connection).yields
+      original_topic_count = Topic.count
+
+      expect do
+        described_class.manage_discord_commands(build_command_bot(event, ["1", nil, nil]))
+      end.to change { topic.posts.count }.by(1)
+
+      expect(Topic.count).to eq(original_topic_count)
+      expect(topic.posts.order(:post_number).last.raw).to eq("Earlier message")
+    end
+
+    it "creates a history topic when automatic channel sync is disabled" do
+      SiteSetting.discord_bot_auto_channel_sync = false
+      category = Fabricate(:category, name: "discord-archive")
+      author = stub(id: 456)
+      history_message =
+        stub(
+          id: 122,
+          content: "Archived message",
+          author: author,
+          embeds: [],
+          attachments: [],
+          link: "https://discord.example/message/122",
+          to_s: "Archived message",
+        )
+      channel =
+        stub(
+          type: Discordrb::Channel::TYPES.fetch(:text),
+          name: category.name,
+          history: [history_message],
+        )
+      command_message = stub(id: 123, channel: channel)
+      event = stub(bot: Object.new, channel: channel, message: command_message)
+      event.stubs(:respond)
+      DiscordBot::Manager.stubs(:with_bot_connection).yields
+      history_topic_title =
+        I18n.t("discord_bot.commands.disccopy.discourse_topic_title", channel: category.name)
+
+      expect do
+        described_class.manage_discord_commands(build_command_bot(event, ["1", nil, nil]))
+      end.to change { Topic.where(title: history_topic_title, category: category).count }.by(1)
     end
   end
 
