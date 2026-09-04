@@ -3,6 +3,9 @@ module ::DiscordBot::DiscordEventsHandlers
   # Copy message to Discourse
   module TransmitAnnouncement
     def self.handle_message(event)
+      return if event.message.from_bot?
+      return if event.message.content.to_s.start_with?(::DiscordBot::Bot::COMMAND_PREFIX)
+
       ::DiscordBot::Manager.with_bot_connection(event.bot) do
         target = destination_for(event.message)
         next if target.nil?

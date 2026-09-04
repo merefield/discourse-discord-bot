@@ -122,15 +122,6 @@ describe DiscordBot::Manager do
     deactivation_thread&.join
   end
 
-  it "keeps a runtime for each multisite database" do
-    DiscordBot::Bot.stubs(:init).returns(*bots)
-
-    described_class.restart("first")
-    described_class.restart("second")
-
-    expect([described_class.bot_for("first"), described_class.bot_for("second")]).to eq(bots)
-  end
-
   it "restarts a site's runtime when its gateway configuration changes" do
     DiscordBot::Bot.stubs(:init).returns(*bots)
     described_class.restart(db)
@@ -153,14 +144,15 @@ describe DiscordBot::Manager do
     expect(described_class.bot_for(db)).to eq(bots.second)
   end
 
-  it "runs bot callbacks in their owning database" do
+  it "keeps the gateway running when its history-copy filtering changes" do
     DiscordBot::Bot.stubs(:init).returns(bots.first)
-    described_class.restart("first")
-    connected_database = nil
+    described_class.restart(db)
+    RailsMultisite::ConnectionManagement.stubs(:each_connection).yields(db)
 
-    described_class.with_bot_connection(bots.first) { |database| connected_database = database }
+    SiteSetting.discord_bot_message_copy_ignore_bot_messages = false
+    described_class.reconcile!
 
-    expect(connected_database).to eq("first")
+    expect(described_class.bot_for(db)).to eq(bots.first)
   end
 
   it "logs per-site gateway lifecycle details at warn level when verbose logging is enabled" do

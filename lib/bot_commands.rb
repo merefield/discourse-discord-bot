@@ -120,9 +120,11 @@ module ::DiscordBot::BotCommands
         end
 
         destination_topic = nil
+        automatic_sync_topic_title = nil
         if target_category.nil?
+          channel_category = Category.find_by(name: event.message.channel.name)
           destination_category =
-            Category.find_by(name: event.message.channel.name) ||
+            channel_category ||
               Category.find_by(id: SiteSetting.discord_bot_message_copy_default_category)
           event.respond I18n.t("discord_bot.commands.disccopy.no_category_specified")
         else
@@ -140,7 +142,17 @@ module ::DiscordBot::BotCommands
                         )
           break
         end
-        unless target_topic.nil?
+        if target_topic.nil?
+          if SiteSetting.discord_bot_auto_channel_sync && channel_category == destination_category
+            automatic_sync_topic_title =
+              I18n.t(
+                "discord_bot.discord_events.auto_message_copy.default_topic_title",
+                channel_name: destination_category.name,
+              )
+            destination_topic =
+              Topic.find_by(title: automatic_sync_topic_title, category_id: destination_category.id)
+          end
+        else
           target_topic = target_topic.gsub /_/, " "
           destination_topic =
             Topic.find_by(title: target_topic, category_id: destination_category.id)
@@ -199,24 +211,26 @@ module ::DiscordBot::BotCommands
                   PostCreator.create!(
                     posting_user,
                     title:
-                      I18n.t(
-                        "discord_bot.commands.disccopy.discourse_topic_title",
-                        channel: event.channel.name,
-                      ) +
-                        (
-                          if past_messages.count <=
-                               SiteSetting.discord_bot_message_copy_topic_size_limit
-                            ""
-                          else
-                            " #{index + 1}"
-                          end
-                        ),
+                      automatic_sync_topic_title ||
+                        I18n.t(
+                          "discord_bot.commands.disccopy.discourse_topic_title",
+                          channel: event.channel.name,
+                        ) +
+                          (
+                            if past_messages.count <=
+                                 SiteSetting.discord_bot_message_copy_topic_size_limit
+                              ""
+                            else
+                              " #{index + 1}"
+                            end
+                          ),
                     raw: raw,
                     category: destination_category.id,
                     skip_validations: true,
                   )
                 total_copied_messages += 1
                 current_topic_id = new_post.topic.id
+                destination_topic = new_post.topic if automatic_sync_topic_title
               elsif !destination_topic.nil? || !current_topic_id.nil?
                 current_topic_id = destination_topic.id if current_topic_id.nil?
                 new_post =
